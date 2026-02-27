@@ -1,0 +1,15 @@
+[package]
+name = "scryneuro"
+version = "0.1.0"
+edition = "2021"
+description = "ScryNeuro: Scryer Prolog ↔ Python bridge for neuro-symbolic AI research"
+license = "MIT"
+authors = ["ScryNeuro Contributors"]
+
+[lib]
+name = "scryneuro"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = "0.23"
+libc = "0.2"

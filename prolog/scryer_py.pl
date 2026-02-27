@@ -1,0 +1,645 @@
+%% ===========================================================================
+%% ScryNeuro: Scryer Prolog ↔ Python Bridge for Neuro-Symbolic AI
+%% ===========================================================================
+%%
+%% Usage:
+%%   :- op(700, xfx, :=).  % Required before use_module if using := operator
+%%   :- use_module('prolog/scryer_py').
+%%   ?- py_init.
+%%   ?- py_eval("1 + 2", X), py_to_int(X, V).
+%%   V = 3.
+%%
+%% Neural predicates:
+%%   ?- nn_load(mnist, "models/mnist.pt", [input_shape=[1,28,28]]).
+%%   ?- nn_predict(mnist, ImageTensor, Prediction).
+%%
+%% LLM:
+%%   ?- llm_load(gpt, "gpt-4", [provider=openai]).
+%%   ?- llm_generate(gpt, "What is 2+2?", Response).
+
+%% NOTE: The := operator must be defined before the module declaration
+%%        so that the Prolog parser can handle it in the export list.
+:- op(700, xfx, :=).
+
+:- module(scryer_py, [
+    % Lifecycle
+    py_init/0,
+    py_init/1,
+    py_finalize/0,
+    % Evaluation
+    py_eval/2,
+    py_exec/1,
+    py_exec_lines/1,
+    % Modules
+    py_import/2,
+    % Attribute access
+    py_getattr/3,
+    py_setattr/3,
+    % Method calls
+    py_call/3,
+    py_call/4,
+    py_call/5,
+    py_call/6,
+    % Direct calls
+    py_invoke/2,
+    py_invoke/3,
+    py_invoke/4,
+    % Type conversion
+    py_to_str/2,
+    py_to_repr/2,
+    py_to_int/2,
+    py_to_float/2,
+    py_to_bool/2,
+    py_from_int/2,
+    py_from_float/2,
+    py_from_bool/2,
+    py_from_str/2,
+    % None
+    py_none/1,
+    py_is_none/1,
+    % JSON
+    py_to_json/2,
+    py_from_json/2,
+    % Collections
+    py_list_new/1,
+    py_list_append/2,
+    py_list_get/3,
+    py_list_len/2,
+    py_dict_new/1,
+    py_dict_set/3,
+    py_dict_get/3,
+    % Memory
+    py_free/1,
+    py_handle_count/1,
+    % Error
+    py_last_error/1,
+    % Resource management
+    with_py/2,
+    % Neural predicates
+    nn_load/3,
+    nn_load/4,
+    nn_predict/3,
+    nn_predict/4,
+    % LLM
+    llm_load/3,
+    llm_load/4,
+    llm_generate/3,
+    llm_generate/4,
+    % Operators
+    (':=')/2
+]).
+
+:- use_module(library(ffi)).
+:- use_module(library(lists)).
+:- use_module(library(format)).
+
+%% ---------------------------------------------------------------------------
+%% FFI Declarations
+%% ---------------------------------------------------------------------------
+%% Loaded lazily by py_init/1. The library path defaults to ./libscryneuro.so.
+%%
+%% Scryer FFI syntax:
+%%   use_foreign_module(Path, [
+%%       'function_name'([ArgType1, ArgType2, ...], ReturnType)
+%%   ]).
+%%
+%% Supported types: void, bool, uint8..uint64, sint8..sint64, f32, f64, ptr, cstr
+
+:- dynamic(initialized/0).
+
+default_lib_path("./libscryneuro.so").
+
+load_ffi(LibPath) :-
+    use_foreign_module(LibPath, [
+        %% Lifecycle
+        'spy_init'([], sint32),
+        'spy_finalize'([], void),
+        %% Evaluation
+        'spy_eval'([cstr], ptr),
+        'spy_exec'([cstr], sint32),
+        %% Modules
+        'spy_import'([cstr], ptr),
+        %% Attribute access
+        'spy_getattr'([ptr, cstr], ptr),
+        'spy_setattr'([ptr, cstr, ptr], sint32),
+        %% Method calls
+        %% Direct calls (callable objects)
+        'spy_call0'([ptr], ptr),
+        'spy_call1'([ptr, ptr], ptr),
+        'spy_call2'([ptr, ptr, ptr], ptr),
+        'spy_call3'([ptr, ptr, ptr, ptr], ptr),
+        %% Method calls: obj.method(args...)
+        'spy_invoke0'([ptr, cstr], ptr),
+        'spy_invoke1'([ptr, cstr, ptr], ptr),
+        'spy_invoke2'([ptr, cstr, ptr, ptr], ptr),
+        'spy_invoke3'([ptr, cstr, ptr, ptr, ptr], ptr),
+        %% Type conversion: Python → C
+        'spy_to_str'([ptr], cstr),
+        'spy_to_repr'([ptr], cstr),
+        'spy_to_int'([ptr], sint64),
+        'spy_to_float'([ptr], f64),
+        'spy_to_bool'([ptr], sint32),
+        %% Type conversion: C → Python
+        'spy_from_int'([sint64], ptr),
+        'spy_from_float'([f64], ptr),
+        'spy_from_bool'([sint32], ptr),
+        'spy_from_str'([cstr], ptr),
+        %% None
+        'spy_none'([], ptr),
+        'spy_is_none'([ptr], sint32),
+        %% JSON bridge
+        'spy_to_json'([ptr], cstr),
+        'spy_from_json'([cstr], ptr),
+        %% Collections
+        'spy_list_new'([], ptr),
+        'spy_list_append'([ptr, ptr], sint32),
+        'spy_list_get'([ptr, sint64], ptr),
+        'spy_list_len'([ptr], sint64),
+        'spy_dict_new'([], ptr),
+        'spy_dict_set'([ptr, cstr, ptr], sint32),
+        'spy_dict_get'([ptr, cstr], ptr),
+        %% Memory management
+        'spy_drop'([ptr], void),
+        'spy_handle_count'([], sint64),
+        %% Error handling
+        'spy_last_error'([], cstr),
+        'spy_last_error_clear'([], void),
+        'spy_cstr_free'([ptr], void)
+    ]).
+
+%% ---------------------------------------------------------------------------
+%% Error Checking
+%% ---------------------------------------------------------------------------
+
+%% Check if a handle is valid (non-zero).
+check_handle(Handle, Context) :-
+    ( Handle =:= 0 ->
+        ffi:'spy_last_error'(Err),
+        throw(error(python_error(Err), Context))
+    ; true
+    ).
+
+%% Check if a status code indicates success (0).
+check_status(Status, Context) :-
+    ( Status =:= 0 -> true
+    ; ffi:'spy_last_error'(Err),
+      throw(error(python_error(Err), Context))
+    ).
+
+%% ---------------------------------------------------------------------------
+%% Lifecycle
+%% ---------------------------------------------------------------------------
+
+%% py_init/0: Initialize with default library path.
+py_init :-
+    ( initialized -> true
+    ; default_lib_path(Path),
+      py_init(Path)
+    ).
+
+%% py_init/1: Initialize with a custom library path.
+py_init(LibPath) :-
+    ( initialized -> true
+    ; load_ffi(LibPath),
+      ffi:'spy_init'(Status),
+      check_status(Status, py_init/1),
+      assertz(initialized)
+    ).
+
+%% py_finalize/0: Clean up Python and release all handles.
+py_finalize :-
+    ( initialized ->
+        ffi:'spy_finalize',
+        retractall(initialized)
+    ; true
+    ).
+
+%% ---------------------------------------------------------------------------
+%% Evaluation
+%% ---------------------------------------------------------------------------
+
+%% py_eval(+Code, -Handle): Evaluate a Python expression.
+%%   ?- py_eval("1 + 2", H).
+py_eval(Code, Handle) :-
+    ffi:'spy_eval'(Code, Handle),
+    check_handle(Handle, py_eval/2).
+
+%% py_exec(+Code): Execute Python statements.
+%%   ?- py_exec("import numpy as np").
+py_exec(Code) :-
+    ffi:'spy_exec'(Code, Status),
+    check_status(Status, py_exec/1).
+
+%% py_exec_lines(+Lines): Execute multi-line Python code.
+%% Takes a list of strings (one per line), joins them with newlines,
+%% and passes to py_exec. This is needed because Scryer Prolog does
+%% not support \n escape sequences in double-quoted strings.
+%%   ?- py_exec_lines(["class Foo:", "    def bar(self):", "        return 42"]).
+py_exec_lines(Lines) :-
+    char_code(NL, 10),
+    join_lines(Lines, NL, Code),
+    py_exec(Code).
+
+join_lines([], _, []).
+join_lines([L], _, L).
+join_lines([L|Ls], NL, Result) :-
+    Ls = [_|_],
+    join_lines(Ls, NL, Rest),
+    append(L, [NL|Rest], Result).
+%% ---------------------------------------------------------------------------
+%% Modules
+%% ---------------------------------------------------------------------------
+
+%% py_import(+ModuleName, -Handle): Import a Python module.
+%%   ?- py_import("numpy", NP).
+py_import(ModuleName, Handle) :-
+    ffi:'spy_import'(ModuleName, Handle),
+    check_handle(Handle, py_import/2).
+
+%% ---------------------------------------------------------------------------
+%% Attribute Access
+%% ---------------------------------------------------------------------------
+
+%% py_getattr(+Obj, +AttrName, -Value): Get attribute from Python object.
+%%   ?- py_import("math", M), py_getattr(M, "pi", Pi).
+py_getattr(Obj, AttrName, Value) :-
+    ffi:'spy_getattr'(Obj, AttrName, Value),
+    check_handle(Value, py_getattr/3).
+
+%% py_setattr(+Obj, +AttrName, +Value): Set attribute on Python object.
+py_setattr(Obj, AttrName, Value) :-
+    ffi:'spy_setattr'(Obj, AttrName, Value, Status),
+    check_status(Status, py_setattr/3).
+
+%% ---------------------------------------------------------------------------
+%% Method Calls: obj.method(args...)
+%% ---------------------------------------------------------------------------
+
+%% py_call(+Obj, +Method, -Result): Call method with no arguments.
+py_call(Obj, Method, Result) :-
+    ffi:'spy_invoke0'(Obj, Method, Result),
+    check_handle(Result, py_call/3).
+
+%% py_call(+Obj, +Method, +Arg1, -Result): Call method with 1 argument.
+py_call(Obj, Method, Arg1, Result) :-
+    ffi:'spy_invoke1'(Obj, Method, Arg1, Result),
+    check_handle(Result, py_call/4).
+
+%% py_call(+Obj, +Method, +Arg1, +Arg2, -Result): Call method with 2 arguments.
+py_call(Obj, Method, Arg1, Arg2, Result) :-
+    ffi:'spy_invoke2'(Obj, Method, Arg1, Arg2, Result),
+    check_handle(Result, py_call/5).
+
+%% py_call(+Obj, +Method, +Arg1, +Arg2, +Arg3, -Result): Call method with 3 arguments.
+py_call(Obj, Method, Arg1, Arg2, Arg3, Result) :-
+    ffi:'spy_invoke3'(Obj, Method, Arg1, Arg2, Arg3, Result),
+    check_handle(Result, py_call/6).
+
+%% ---------------------------------------------------------------------------
+%% Direct Calls: callable(args...)
+%% ---------------------------------------------------------------------------
+
+%% py_invoke(+Callable, -Result): Call a callable with no arguments.
+py_invoke(Callable, Result) :-
+    ffi:'spy_call0'(Callable, Result),
+    check_handle(Result, py_invoke/2).
+
+%% py_invoke(+Callable, +Arg1, -Result): Call with 1 argument.
+py_invoke(Callable, Arg1, Result) :-
+    ffi:'spy_call1'(Callable, Arg1, Result),
+    check_handle(Result, py_invoke/3).
+
+%% py_invoke(+Callable, +Arg1, +Arg2, -Result): Call with 2 arguments.
+py_invoke(Callable, Arg1, Arg2, Result) :-
+    ffi:'spy_call2'(Callable, Arg1, Arg2, Result),
+    check_handle(Result, py_invoke/4).
+
+%% ---------------------------------------------------------------------------
+%% Type Conversion
+%% ---------------------------------------------------------------------------
+
+%% py_to_str(+Handle, -String): Get str(obj).
+py_to_str(Handle, String) :-
+    ffi:'spy_to_str'(Handle, String).
+
+%% py_to_repr(+Handle, -String): Get repr(obj).
+py_to_repr(Handle, String) :-
+    ffi:'spy_to_repr'(Handle, String).
+
+%% py_to_int(+Handle, -Value): Extract integer.
+py_to_int(Handle, Value) :-
+    ffi:'spy_to_int'(Handle, Value).
+
+%% py_to_float(+Handle, -Value): Extract float.
+py_to_float(Handle, Value) :-
+    ffi:'spy_to_float'(Handle, Value).
+
+%% py_to_bool(+Handle, -Value): Extract boolean (true/false).
+py_to_bool(Handle, Value) :-
+    ffi:'spy_to_bool'(Handle, Code),
+    ( Code =:= 1 -> Value = true
+    ; Code =:= 0 -> Value = false
+    ; ffi:'spy_last_error'(Err),
+      throw(error(python_error(Err), py_to_bool/2))
+    ).
+
+%% py_from_int(+Value, -Handle): Create Python int.
+py_from_int(Value, Handle) :-
+    ffi:'spy_from_int'(Value, Handle),
+    check_handle(Handle, py_from_int/2).
+
+%% py_from_float(+Value, -Handle): Create Python float.
+py_from_float(Value, Handle) :-
+    ffi:'spy_from_float'(Value, Handle),
+    check_handle(Handle, py_from_float/2).
+
+%% py_from_bool(+Value, -Handle): Create Python bool.
+%%   py_from_bool(true, H) or py_from_bool(false, H).
+py_from_bool(true, Handle) :- !,
+    ffi:'spy_from_bool'(1, Handle),
+    check_handle(Handle, py_from_bool/2).
+py_from_bool(false, Handle) :-
+    ffi:'spy_from_bool'(0, Handle),
+    check_handle(Handle, py_from_bool/2).
+
+%% py_from_str(+String, -Handle): Create Python str.
+py_from_str(String, Handle) :-
+    ffi:'spy_from_str'(String, Handle),
+    check_handle(Handle, py_from_str/2).
+
+%% ---------------------------------------------------------------------------
+%% None
+%% ---------------------------------------------------------------------------
+
+%% py_none(-Handle): Get a handle to Python None.
+py_none(Handle) :-
+    ffi:'spy_none'(Handle),
+    check_handle(Handle, py_none/1).
+
+%% py_is_none(+Handle): Succeeds if the handle points to None.
+py_is_none(Handle) :-
+    ffi:'spy_is_none'(Handle, Code),
+    Code =:= 1.
+
+%% ---------------------------------------------------------------------------
+%% JSON Bridge
+%% ---------------------------------------------------------------------------
+
+%% py_to_json(+Handle, -JsonString): Serialize Python object to JSON.
+py_to_json(Handle, Json) :-
+    ffi:'spy_to_json'(Handle, Json).
+
+%% py_from_json(+JsonString, -Handle): Deserialize JSON to Python object.
+py_from_json(Json, Handle) :-
+    ffi:'spy_from_json'(Json, Handle),
+    check_handle(Handle, py_from_json/2).
+
+%% ---------------------------------------------------------------------------
+%% Collections
+%% ---------------------------------------------------------------------------
+
+%% py_list_new(-Handle): Create empty Python list.
+py_list_new(Handle) :-
+    ffi:'spy_list_new'(Handle),
+    check_handle(Handle, py_list_new/1).
+
+%% py_list_append(+List, +Item): Append item to list.
+py_list_append(List, Item) :-
+    ffi:'spy_list_append'(List, Item, Status),
+    check_status(Status, py_list_append/2).
+
+%% py_list_get(+List, +Index, -Item): Get item at index.
+py_list_get(List, Index, Item) :-
+    ffi:'spy_list_get'(List, Index, Item),
+    check_handle(Item, py_list_get/3).
+
+%% py_list_len(+List, -Len): Get list length.
+py_list_len(List, Len) :-
+    ffi:'spy_list_len'(List, Len).
+
+%% py_dict_new(-Handle): Create empty Python dict.
+py_dict_new(Handle) :-
+    ffi:'spy_dict_new'(Handle),
+    check_handle(Handle, py_dict_new/1).
+
+%% py_dict_set(+Dict, +Key, +Value): Set key-value pair (key is atom/string).
+py_dict_set(Dict, Key, Value) :-
+    ffi:'spy_dict_set'(Dict, Key, Value, Status),
+    check_status(Status, py_dict_set/3).
+
+%% py_dict_get(+Dict, +Key, -Value): Get value by key.
+py_dict_get(Dict, Key, Value) :-
+    ffi:'spy_dict_get'(Dict, Key, Value),
+    check_handle(Value, py_dict_get/3).
+
+%% ---------------------------------------------------------------------------
+%% Memory Management
+%% ---------------------------------------------------------------------------
+
+%% py_free(+Handle): Release a Python object handle.
+py_free(Handle) :-
+    ffi:'spy_drop'(Handle).
+
+%% py_handle_count(-Count): Number of live handles (diagnostic).
+py_handle_count(Count) :-
+    ffi:'spy_handle_count'(Count).
+
+%% py_last_error(-Error): Get last error message (empty if none).
+py_last_error(Error) :-
+    ffi:'spy_last_error'(Error).
+
+%% ---------------------------------------------------------------------------
+%% Resource Management (RAII-style)
+%% ---------------------------------------------------------------------------
+
+%% with_py(+Handle, +Goal): Execute Goal, then free Handle regardless of outcome.
+%%
+%%   ?- py_eval("42", H), with_py(H, (py_to_int(H, V), write(V))).
+%%
+with_py(Handle, Goal) :-
+    ( catch(Goal, E, (py_free(Handle), throw(E))) ->
+        py_free(Handle)
+    ; py_free(Handle),
+      fail
+    ).
+
+%% ---------------------------------------------------------------------------
+%% Syntactic Sugar: := operator
+%% ---------------------------------------------------------------------------
+%%
+%% Var := py_eval(Expr)       → py_eval(Expr, Var)
+%% Var := Module:Func         → py_call(Module, Func, Var)
+%% Var := Module:Func(A)      → py_call(Module, Func, A, Var)
+%% Var := Module:Func(A,B)    → py_call(Module, Func, A, B, Var)
+%% Var := Module:Func(A,B,C)  → py_call(Module, Func, A, B, C, Var)
+%%
+%% Examples:
+%%   ?- NP := py_import("numpy"),
+%%      Arr := NP:"array"([1,2,3]),
+%%      Shape := Arr:"shape".
+
+
+Var := py_eval(Expr) :- !,
+    py_eval(Expr, Var).
+
+Var := py_import(Module) :- !,
+    py_import(Module, Var).
+
+Var := py_from_json(Json) :- !,
+    py_from_json(Json, Var).
+
+Var := py_from_int(V) :- !,
+    py_from_int(V, Var).
+
+Var := py_from_float(V) :- !,
+    py_from_float(V, Var).
+
+Var := py_from_str(V) :- !,
+    py_from_str(V, Var).
+
+%% Method call sugar: Var := Obj:Method or Var := Obj:Method(Args...)
+Var := Obj:Call :- !,
+    ( Call = [_|_] ->
+        %% Call is a string (char list) like "pi" - attribute access (getattr)
+        py_getattr(Obj, Call, Var)
+    ; atom(Call) ->
+        %% Call is an atom like upper - no-arg method call: obj.method()
+        atom_chars(Call, MethodStr),
+        py_call(Obj, MethodStr, Var)
+    ; %% Call is compound like replace(A,B) - method call with args
+        Call =.. [Method | Args],
+        atom_chars(Method, MethodStr),
+        ( Args = [A, B, C] -> py_call(Obj, MethodStr, A, B, C, Var)
+        ; Args = [A, B]    -> py_call(Obj, MethodStr, A, B, Var)
+        ; Args = [A]       -> py_call(Obj, MethodStr, A, Var)
+        ; py_call(Obj, MethodStr, Var)
+        )
+    ).
+
+%% ---------------------------------------------------------------------------
+%% Neural Predicates
+%% ---------------------------------------------------------------------------
+%%
+%% High-level predicates for working with neural networks via the
+%% scryer_py_runtime Python module.
+%%
+%% Usage:
+%%   ?- nn_load(my_model, "path/to/model.pt", []).
+%%   ?- nn_predict(my_model, InputHandle, OutputHandle).
+
+:- dynamic(nn_registry/2).   %% nn_registry(Name, PyHandle)
+:- dynamic(llm_registry/2).  %% llm_registry(Name, PyHandle)
+
+%% nn_load(+Name, +Path, +Options): Load a neural network model.
+%%   Name: atom identifying the model
+%%   Path: string path to model file
+%%   Options: list of key=value pairs
+nn_load(Name, Path, Options) :-
+    nn_load(Name, Path, Options, _Handle).
+
+nn_load(Name, Path, Options, Handle) :-
+    ( nn_registry(Name, _) ->
+        throw(error(model_already_loaded(Name), nn_load/4))
+    ; true
+    ),
+    py_import("scryer_py_runtime", Runtime),
+    %% Build kwargs dict from options list
+    py_dict_new(Kwargs),
+    load_options(Kwargs, Options),
+    py_from_str(Path, PyPath),
+    py_call(Runtime, "load_model", PyPath, Kwargs, Handle),
+    assertz(nn_registry(Name, Handle)),
+    py_free(Kwargs),
+    py_free(PyPath),
+    py_free(Runtime).
+
+%% nn_predict(+Name, +Input, -Output): Run inference.
+nn_predict(Name, Input, Output) :-
+    nn_predict(Name, Input, Output, []).
+
+nn_predict(Name, Input, Output, Options) :-
+    ( nn_registry(Name, ModelHandle) -> true
+    ; throw(error(model_not_loaded(Name), nn_predict/4))
+    ),
+    py_import("scryer_py_runtime", Runtime),
+    py_dict_new(Kwargs),
+    load_options(Kwargs, Options),
+    py_call(Runtime, "predict", ModelHandle, Input, Output0),
+    ( Kwargs \= 0 -> py_free(Kwargs) ; true ),
+    py_free(Runtime),
+    Output = Output0.
+
+%% ---------------------------------------------------------------------------
+%% LLM Predicates
+%% ---------------------------------------------------------------------------
+
+%% llm_load(+Name, +ModelId, +Options): Load an LLM.
+%%   Name: atom identifying the LLM
+%%   ModelId: string model identifier (e.g., "gpt-4", "llama-3")
+%%   Options: list of key=value pairs (e.g., [provider=openai, temperature=0.7])
+llm_load(Name, ModelId, Options) :-
+    llm_load(Name, ModelId, Options, _Handle).
+
+llm_load(Name, ModelId, Options, Handle) :-
+    ( llm_registry(Name, _) ->
+        throw(error(llm_already_loaded(Name), llm_load/4))
+    ; true
+    ),
+    py_import("scryer_py_runtime", Runtime),
+    py_dict_new(Kwargs),
+    load_options(Kwargs, Options),
+    py_from_str(ModelId, PyModelId),
+    py_call(Runtime, "load_llm", PyModelId, Kwargs, Handle),
+    assertz(llm_registry(Name, Handle)),
+    py_free(Kwargs),
+    py_free(PyModelId),
+    py_free(Runtime).
+
+%% llm_generate(+Name, +Prompt, -Response): Generate text with an LLM.
+llm_generate(Name, Prompt, Response) :-
+    llm_generate(Name, Prompt, Response, []).
+
+llm_generate(Name, Prompt, Response, Options) :-
+    ( llm_registry(Name, LLMHandle) -> true
+    ; throw(error(llm_not_loaded(Name), llm_generate/4))
+    ),
+    py_import("scryer_py_runtime", Runtime),
+    py_from_str(Prompt, PyPrompt),
+    py_dict_new(Kwargs),
+    load_options(Kwargs, Options),
+    py_call(Runtime, "generate", LLMHandle, PyPrompt, RespHandle),
+    py_to_str(RespHandle, Response),
+    py_free(RespHandle),
+    py_free(PyPrompt),
+    py_free(Kwargs),
+    py_free(Runtime).
+
+%% ---------------------------------------------------------------------------
+%% Helpers
+%% ---------------------------------------------------------------------------
+
+%% load_options(+DictHandle, +OptionList): Load key=value pairs into a Python dict.
+load_options(_, []) :- !.
+load_options(Dict, [Key=Value | Rest]) :- !,
+    ( number(Value) ->
+        ( float(Value) ->
+            py_from_float(Value, PyVal)
+        ; py_from_int(Value, PyVal)
+        )
+    ; atom(Value) ->
+        atom_chars(Value, Chars),
+        atom_chars(StrValue, Chars),
+        py_from_str(StrValue, PyVal)
+    ; is_list(Value) ->
+        %% Convert Prolog list to JSON, then to Python
+        %% TODO: proper list conversion
+        py_from_str("[]", PyVal)
+    ; py_from_str(Value, PyVal)
+    ),
+    atom_chars(Key, KeyChars),
+    atom_chars(KeyStr, KeyChars),
+    py_dict_set(Dict, KeyStr, PyVal),
+    py_free(PyVal),
+    load_options(Dict, Rest).
+load_options(Dict, [_ | Rest]) :-
+    load_options(Dict, Rest).

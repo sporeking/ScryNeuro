@@ -1,0 +1,32 @@
+# Build artifacts
+/docs/
+/target/
+/libscryneuro.so
+/libscryneuro.dylib
+
+# Rust
+Cargo.lock
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# Tooling
+.ruff_cache/
+.sisyphus/
+
+# Reference repo (read-only clone, not part of this project)
+/scryer-prolog/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
