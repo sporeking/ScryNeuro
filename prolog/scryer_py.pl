@@ -1,5 +1,5 @@
 %% ===========================================================================
-%% ScryNeuro: Scryer Prolog ↔ Python Bridge for Neuro-Symbolic AI
+%% ScryNeuro: Scryer Prolog ↔ Python Bridge (Core)
 %% ===========================================================================
 %%
 %% Usage:
@@ -9,14 +9,14 @@
 %%   ?- py_eval("1 + 2", X), py_to_int(X, V).
 %%   V = 3.
 %%
-%% Neural predicates:
-%%   ?- nn_load(mnist, "models/mnist.pt", [input_shape=[1,28,28]]).
-%%   ?- nn_predict(mnist, ImageTensor, Prediction).
+%% Plugin modules (load separately as needed):
+%%   :- use_module('prolog/scryer_nn').  % nn_load/nn_predict
+%%   :- use_module('prolog/scryer_llm'). % llm_load/llm_generate
+%%   :- use_module('prolog/scryer_rl').  % rl_create/rl_train/rl_action etc.
 %%
-%% LLM:
-%%   ?- llm_load(gpt, "gpt-4", [provider=openai]).
-%%   ?- llm_generate(gpt, "What is 2+2?", Response).
-
+%% NOTE: The := operator must be defined before the module declaration
+%%        so that the Prolog parser can handle it in the export list.
+:- op(700, xfx, :=).
 %% NOTE: The := operator must be defined before the module declaration
 %%        so that the Prolog parser can handle it in the export list.
 :- op(700, xfx, :=).
@@ -78,16 +78,10 @@
     py_last_error/1,
     % Resource management
     with_py/2,
-    % Neural predicates
-    nn_load/3,
-    nn_load/4,
-    nn_predict/3,
-    nn_predict/4,
-    % LLM
-    llm_load/3,
-    llm_load/4,
-    llm_generate/3,
-    llm_generate/4,
+    % Helpers (exported for use by plugin modules)
+    load_options/2,
+    state_to_json/2,
+    json_to_value/2,
     % Operators
     (':=')/2
 ]).
@@ -568,106 +562,46 @@ Var := Obj:Call :- !,
     ).
 
 %% ---------------------------------------------------------------------------
-%% Neural Predicates
-%% ---------------------------------------------------------------------------
-%%
-%% High-level predicates for working with neural networks via the
-%% scryer_py_runtime Python module.
-%%
-%% Usage:
-%%   ?- nn_load(my_model, "path/to/model.pt", []).
-%%   ?- nn_predict(my_model, InputHandle, OutputHandle).
-
-:- dynamic(nn_registry/2).   %% nn_registry(Name, PyHandle)
-:- dynamic(llm_registry/2).  %% llm_registry(Name, PyHandle)
-
-%% nn_load(+Name, +Path, +Options): Load a neural network model.
-%%   Name: atom identifying the model
-%%   Path: string path to model file
-%%   Options: list of key=value pairs
-nn_load(Name, Path, Options) :-
-    nn_load(Name, Path, Options, _Handle).
-
-nn_load(Name, Path, Options, Handle) :-
-    ( nn_registry(Name, _) ->
-        throw(error(model_already_loaded(Name), nn_load/4))
-    ; true
-    ),
-    py_import("scryer_py_runtime", Runtime),
-    %% Build kwargs dict from options list
-    py_dict_new(Kwargs),
-    load_options(Kwargs, Options),
-    py_from_str(Path, PyPath),
-    py_call(Runtime, "load_model", PyPath, Kwargs, Handle),
-    assertz(nn_registry(Name, Handle)),
-    py_free(Kwargs),
-    py_free(PyPath),
-    py_free(Runtime).
-
-%% nn_predict(+Name, +Input, -Output): Run inference.
-nn_predict(Name, Input, Output) :-
-    nn_predict(Name, Input, Output, []).
-
-nn_predict(Name, Input, Output, Options) :-
-    ( nn_registry(Name, ModelHandle) -> true
-    ; throw(error(model_not_loaded(Name), nn_predict/4))
-    ),
-    py_import("scryer_py_runtime", Runtime),
-    py_dict_new(Kwargs),
-    load_options(Kwargs, Options),
-    py_call(Runtime, "predict", ModelHandle, Input, Output0),
-    ( Kwargs \= 0 -> py_free(Kwargs) ; true ),
-    py_free(Runtime),
-    Output = Output0.
-
-%% ---------------------------------------------------------------------------
-%% LLM Predicates
+%% Helpers (exported for plugin modules)
 %% ---------------------------------------------------------------------------
 
-%% llm_load(+Name, +ModelId, +Options): Load an LLM.
-%%   Name: atom identifying the LLM
-%%   ModelId: string model identifier (e.g., "gpt-4", "llama-3")
-%%   Options: list of key=value pairs (e.g., [provider=openai, temperature=0.7])
-llm_load(Name, ModelId, Options) :-
-    llm_load(Name, ModelId, Options, _Handle).
+%% state_to_json(+State, -Json): Convert a Prolog state (list of numbers) to JSON.
+state_to_json(State, Json) :-
+    state_to_json_chars(State, Inner),
+    append("[", Inner, T1),
+    append(T1, "]", Json).
 
-llm_load(Name, ModelId, Options, Handle) :-
-    ( llm_registry(Name, _) ->
-        throw(error(llm_already_loaded(Name), llm_load/4))
-    ; true
-    ),
-    py_import("scryer_py_runtime", Runtime),
-    py_dict_new(Kwargs),
-    load_options(Kwargs, Options),
-    py_from_str(ModelId, PyModelId),
-    py_call(Runtime, "load_llm", PyModelId, Kwargs, Handle),
-    assertz(llm_registry(Name, Handle)),
-    py_free(Kwargs),
-    py_free(PyModelId),
-    py_free(Runtime).
+state_to_json_chars([], []).
+state_to_json_chars([X], Chars) :-
+    number_chars(X, Chars).
+state_to_json_chars([X|Xs], Chars) :-
+    Xs = [_|_],
+    number_chars(X, XChars),
+    append(XChars, ",", WithComma),
+    state_to_json_chars(Xs, Rest),
+    append(WithComma, Rest, Chars).
 
-%% llm_generate(+Name, +Prompt, -Response): Generate text with an LLM.
-llm_generate(Name, Prompt, Response) :-
-    llm_generate(Name, Prompt, Response, []).
-
-llm_generate(Name, Prompt, Response, Options) :-
-    ( llm_registry(Name, LLMHandle) -> true
-    ; throw(error(llm_not_loaded(Name), llm_generate/4))
-    ),
-    py_import("scryer_py_runtime", Runtime),
-    py_from_str(Prompt, PyPrompt),
-    py_dict_new(Kwargs),
-    load_options(Kwargs, Options),
-    py_call(Runtime, "generate", LLMHandle, PyPrompt, RespHandle),
-    py_to_str(RespHandle, Response),
-    py_free(RespHandle),
-    py_free(PyPrompt),
-    py_free(Kwargs),
-    py_free(Runtime).
-
-%% ---------------------------------------------------------------------------
-%% Helpers
-%% ---------------------------------------------------------------------------
+%% json_to_value(+Json, -Value): Parse a simple JSON value.
+%% Handles numbers, strings, and passes through complex JSON as char list.
+json_to_value(Json, Value) :-
+    ( Json = [] ->
+        Value = []
+    ; Json = [0'{|_] ->
+        %% JSON object -- return as char list (the user can parse further)
+        Value = Json
+    ; Json = [0'[|_] ->
+        %% JSON array -- return as char list
+        Value = Json
+    ; Json = [0'"| _] ->
+        %% JSON string -- return as char list
+        Value = Json
+    ; %% Try to parse as number
+      catch(
+          (number_chars(N, Json), Value = N),
+          _,
+          Value = Json
+      )
+    ).
 
 %% load_options(+DictHandle, +OptionList): Load key=value pairs into a Python dict.
 load_options(_, []) :- !.
@@ -681,10 +615,10 @@ load_options(Dict, [Key=Value | Rest]) :- !,
         atom_chars(Value, Chars),
         atom_chars(StrValue, Chars),
         py_from_str(StrValue, PyVal)
-    ; is_list(Value) ->
-        %% Convert Prolog list to JSON, then to Python
-        %% TODO: proper list conversion
-        py_from_str("[]", PyVal)
+    ; (Value = [] ; Value = [V1|_], number(V1)) ->
+        %% Convert Prolog list of numbers to Python list via JSON
+        state_to_json(Value, ListJson),
+        py_from_json(ListJson, PyVal)
     ; py_from_str(Value, PyVal)
     ),
     atom_chars(Key, KeyChars),

@@ -132,11 +132,14 @@ pub extern "C" fn spy_init() -> i32 {
     pyo3::prepare_freethreaded_python();
     registry::init_registry();
 
-    // Add current working directory to sys.path.
+    // Add current working directory and python/ subdirectory to sys.path.
+    // This allows importing scryer_py_runtime and scryer_rl_runtime without
+    // requiring the user to set PYTHONPATH.
     let result: PyResult<()> = Python::with_gil(|py| {
         let sys = py.import("sys")?;
         let path = sys.getattr("path")?;
         path.call_method1("insert", (0i32, "."))?;
+        path.call_method1("insert", (0i32, "./python"))?;
         Ok(())
     });
 
