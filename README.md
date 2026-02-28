@@ -16,6 +16,18 @@ Inspired by [Jurassic.pl](https://github.com/haldai/Jurassic.pl) (SWI-Prolog ↔
 - **PyO3** — embeds Python within Rust; manages GIL and type conversions.
 - **Python** — executes neural predicates, data processing, library calls (PyTorch, NumPy, OpenAI, etc.).
 
+### Plugin Architecture
+
+NN, LLM, and RL functionality are **opt-in plugins** — separate modules loaded via `use_module`. The core (`scryer_py.pl`) only provides `py_*` predicates and the `:=` operator.
+
+| Plugin | Module file | Predicates |
+|---|---|---|
+| Neural Networks | `prolog/scryer_nn.pl` | `nn_load/3,4`, `nn_predict/3,4` |
+| Large Language Models | `prolog/scryer_llm.pl` | `llm_load/3,4`, `llm_generate/3,4` |
+| Reinforcement Learning | `prolog/scryer_rl.pl` | `rl_create/4`, `rl_load/3,4`, `rl_save/2`, `rl_action/3,4`, `rl_train/2,3`, `rl_evaluate/3`, `rl_info/2` |
+
+Each plugin has a matching Python runtime module (`python/scryer_*_runtime.py`) that is loaded lazily on first use.
+
 ---
 
 ## Installation
@@ -889,6 +901,9 @@ check_error_demo :-
 ```
 
 ### Neural Network Predicates
+
+> **Requires plugin**: `:- use_module('prolog/scryer_nn').`
+
 Predicates for managing and running deep learning models.
 
 #### nn_load(+Name, +Path, +Options)
@@ -931,6 +946,7 @@ Options are formatted as `[key1=value1, key2=value2, ...]` where keys are atoms.
 ```prolog
 :- op(700, xfx, :=).
 :- use_module('prolog/scryer_py').
+:- use_module('prolog/scryer_nn').
 
 neural_demo :-
     py_init,
@@ -953,6 +969,9 @@ neural_demo :-
 ```
 
 ### LLM Predicates
+
+> **Requires plugin**: `:- use_module('prolog/scryer_llm').`
+
 Predicates for interacting with Large Language Model providers.
 
 #### llm_load(+Name, +ModelId, +Options)
@@ -997,6 +1016,7 @@ Generates text based on a prompt.
 **Example:**
 ```prolog
 :- use_module('prolog/scryer_py').
+:- use_module('prolog/scryer_llm').
 
 llm_demo :-
     py_init,
@@ -1009,6 +1029,126 @@ llm_demo :-
         _Error,
         format("LLM not available (no API key or network)~n", [])
     ).
+```
+
+### RL Predicates
+
+> **Requires plugin**: `:- use_module('prolog/scryer_rl').`
+
+Predicates for training, evaluating, and using reinforcement learning agents via [Tianshou v2.0](https://github.com/thu-ml/tianshou).
+
+#### rl_create(+Name, +EnvId, +Algorithm, +Options)
+Creates and registers a new RL agent.
+
+| Parameter | Type | Description |
+|---|---|---|
+| Name | Atom | Symbolic identifier for the agent |
+| EnvId | String | Gymnasium environment ID (e.g., `"CartPole-v1"`) |
+| Algorithm | Atom | RL algorithm: `dqn`, `ppo`, `a2c`, `sac`, `td3`, `ddpg`, `pg`, `discrete_sac` |
+| Options | List | `Key=Value` pairs |
+
+**Common Options for `rl_create`:**
+| Option | Example | Description |
+|---|---|---|
+| `lr` | `lr=0.001` | Learning rate |
+| `gamma` | `gamma=0.99` | Discount factor |
+| `hidden_sizes` | `hidden_sizes=[64,64]` | MLP hidden layer sizes |
+| `n_train_envs` | `n_train_envs=4` | Number of parallel training environments |
+| `buffer_size` | `buffer_size=20000` | Replay buffer capacity |
+| `eps_training` | `eps_training=0.1` | Epsilon for training (DQN) |
+
+#### rl_load(+Name, +Path, +Options)
+#### rl_load(+Name, +Path, +Options, -Handle)
+Loads a saved RL agent checkpoint.
+
+| Parameter | Type | Description |
+|---|---|---|
+| Name | Atom | Symbolic identifier |
+| Path | String | Path to the checkpoint file |
+| Options | List | **Required**: `env_id` (string) and `algorithm` (atom) |
+
+#### rl_save(+Name, +Path)
+Saves the current agent policy to a checkpoint file.
+
+| Parameter | Type | Description |
+|---|---|---|
+| Name | Atom | Identifier of a registered agent |
+| Path | String | Output path for the checkpoint |
+
+#### rl_action(+Name, +State, -Action)
+#### rl_action(+Name, +State, -Action, +Options)
+Queries the agent policy for an action given an observation.
+
+| Parameter | Type | Description |
+|---|---|---|
+| Name | Atom | Identifier of a registered agent |
+| State | Handle | Handle to the observation tensor |
+| Action | Handle | Handle to the selected action |
+| Options | List | e.g., `[deterministic=true]` |
+
+#### rl_train(+Name, +Options)
+#### rl_train(+Name, +Options, -Metrics)
+Runs the training loop for the specified agent.
+
+| Parameter | Type | Description |
+|---|---|---|
+| Name | Atom | Identifier of a registered agent |
+| Options | List | Training configuration |
+| Metrics | Handle | Handle to a dict of training metrics |
+
+**Common Options for `rl_train`:**
+| Option | Example | Description |
+|---|---|---|
+| `max_epochs` | `max_epochs=10` | Number of training epochs |
+| `epoch_num_steps` | `epoch_num_steps=5000` | Steps per epoch |
+| `batch_size` | `batch_size=64` | Mini-batch size for updates |
+| `test_step_num_episodes` | `test_step_num_episodes=5` | Episodes per test phase |
+
+#### rl_evaluate(+Name, +NumEpisodes, -Metrics)
+Evaluates the agent over a fixed number of episodes.
+
+| Parameter | Type | Description |
+|---|---|---|
+| Name | Atom | Identifier of a registered agent |
+| NumEpisodes | Integer | Number of evaluation episodes |
+| Metrics | Handle | Handle to evaluation metrics dict |
+
+#### rl_info(+Name, -Info)
+Returns metadata about a registered agent.
+
+| Parameter | Type | Description |
+|---|---|---|
+| Name | Atom | Identifier of a registered agent |
+| Info | Handle | Handle to an info dict |
+
+**Example:**
+```prolog
+:- use_module('prolog/scryer_py').
+:- use_module('prolog/scryer_rl').
+
+rl_demo :-
+    py_init,
+
+    %% Create a DQN agent for CartPole
+    rl_create(agent, "CartPole-v1", dqn,
+              [lr=0.001, hidden_sizes=[64,64]]),
+
+    %% Train for 5 epochs
+    rl_train(agent, [max_epochs=5, epoch_num_steps=2000], Metrics),
+    py_to_str(Metrics, MetricsStr),
+    format("Training metrics: ~s~n", [MetricsStr]),
+
+    %% Evaluate
+    rl_evaluate(agent, 10, EvalMetrics),
+    py_to_str(EvalMetrics, EvalStr),
+    format("Eval metrics: ~s~n", [EvalStr]),
+
+    %% Save checkpoint
+    rl_save(agent, "checkpoints/cartpole_dqn.pt"),
+
+    py_free(Metrics),
+    py_free(EvalMetrics),
+    py_finalize.
 ```
 
 ---
@@ -1219,6 +1359,7 @@ numpy_demo :-
 | `examples/numpy_torch.pl` | NumPy vectors/matrices, PyTorch tensors, linear regression, CUDA GPU matmul |
 | `examples/mnist_cnn.pl` | CNN training on MNIST from scratch — model definition, training loop, evaluation, neuro-symbolic inference |
 | `examples/mnist_cnn_v2.pl` | **Module pattern** (recommended): same CNN training, but Python code in a separate `.py` file |
+| `examples/rl_demo.pl` | DQN agent on CartPole-v1 — create, train, evaluate, save, load |
 
 ```bash
 # Run all examples
@@ -1227,6 +1368,7 @@ LD_LIBRARY_PATH=. scryer-prolog examples/neural.pl
 LD_LIBRARY_PATH=. scryer-prolog examples/numpy_torch.pl
 LD_LIBRARY_PATH=. scryer-prolog examples/mnist_cnn.pl
 LD_LIBRARY_PATH=. scryer-prolog examples/mnist_cnn_v2.pl
+LD_LIBRARY_PATH=. scryer-prolog examples/rl_demo.pl
 ```
 
 ---
@@ -1268,19 +1410,28 @@ ScryNeuro/
 │   ├── convert.rs          # Type conversion + TLS string buffer
 │   └── error.rs            # TLS error storage (spy_last_error)
 ├── prolog/
-│   └── scryer_py.pl        # Scryer Prolog API module + := operator
+│   ├── scryer_py.pl        # Core: py_* predicates + := operator
+│   ├── scryer_nn.pl        # Plugin: nn_load, nn_predict
+│   ├── scryer_llm.pl       # Plugin: llm_load, llm_generate
+│   └── scryer_rl.pl        # Plugin: rl_create, rl_train, rl_action, ...
 ├── python/
-│   └── scryer_py_runtime.py # ModelRegistry, LLMManager, TensorUtils
+│   ├── scryer_py_runtime.py  # Core runtime: device management, TensorUtils
+│   ├── scryer_nn_runtime.py  # NN runtime: model loading + inference
+│   ├── scryer_llm_runtime.py # LLM runtime: provider abstraction
+│   └── scryer_rl_runtime.py  # RL runtime: Tianshou v2.0 agent wrappers
 ├── examples/
 │   ├── basic.pl            # Basic interop demos
-│   ├── neural.pl           # Neuro-symbolic patterns
+│   ├── neural.pl           # Neuro-symbolic patterns (NN + LLM + RL)
 │   ├── numpy_torch.pl      # NumPy + PyTorch + CUDA demos
 │   ├── mnist_cnn.pl        # CNN MNIST training pipeline (inline Python)
 │   ├── mnist_cnn_v2.pl     # CNN MNIST training pipeline (module pattern)
-│   └── mnist_cnn_module.py # Python module for mnist_cnn_v2.pl
+│   ├── mnist_cnn_module.py # Python module for mnist_cnn_v2.pl
+│   └── rl_demo.pl          # RL demo: DQN on CartPole-v1
 ├── test_comprehensive.pl   # 24 low-level FFI tests
-├── test_prolog_api.pl      # 17 high-level API tests
+├── test_prolog_api.pl      # 19 high-level API tests
 ├── test_minimal_api.pl     # 3 core smoke tests
+├── test_rl.pl              # 17 RL plugin tests (scryer_rl.pl)
+├── test_rl.py              # 15 Python RL runtime tests (scryer_rl_runtime.py)
 └── docs/
     └── technical_report.md # Detailed Chinese technical report
 ```
