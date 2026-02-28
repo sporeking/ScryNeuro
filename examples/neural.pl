@@ -15,6 +15,8 @@
 
 :- op(700, xfx, :=).
 :- use_module('../prolog/scryer_py').
+:- use_module('../prolog/scryer_nn').
+:- use_module('../prolog/scryer_llm').
 
 %% ===========================================================================
 %% Example 1: MNIST Digit Classification (Neural Predicate)
@@ -230,6 +232,7 @@ demo_probabilistic :-
     py_init,
     demo_mnist, nl,
     demo_addition, nl,
+    demo_llm, nl,
     demo_rl, nl,
     demo_probabilistic, nl,
     format("=== All neural examples complete ===~n", []),
