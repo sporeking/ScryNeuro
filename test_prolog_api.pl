@@ -104,13 +104,32 @@ test_py_invoke_2 :-
     py_free(Base),
     py_free(PowFn).
 
+test_py_invoken :-
+    py_eval("lambda a,b,c,d: a+b+c+d", Fn),
+    py_from_int(1, A1),
+    py_from_int(2, A2),
+    py_from_int(3, A3),
+    py_from_int(4, A4),
+    py_invoken(Fn, [A1, A2, A3, A4], Result),
+    py_to_int(Result, V),
+    ( V =:= 10 ->
+        format("9. py_invoken/3 (list args): OK~n", [])
+    ; format("9. py_invoken/3 (list args): FAIL~n", [])
+    ),
+    py_free(Result),
+    py_free(A4),
+    py_free(A3),
+    py_free(A2),
+    py_free(A1),
+    py_free(Fn).
+
 test_operator_sugar :-
     Math := py_import("math"),
     Pi := Math:"pi",
     py_to_float(Pi, PiVal),
     ( PiVal > 3.14, PiVal < 3.15 ->
-        format("9. := operator: OK~n", [])
-    ; format("9. := operator: FAIL~n", [])
+        format("10. := operator: OK~n", [])
+    ; format("10. := operator: FAIL~n", [])
     ),
     py_free(Pi),
     py_free(Math).
@@ -120,11 +139,33 @@ test_operator_method_call :-
     Result := S:upper,
     py_to_str(Result, Str),
     ( Str = "HELLO WORLD" ->
-        format("10. := method call: OK~n", [])
-    ; format("10. := method call: FAIL~n", [])
+        format("11. := method call: OK~n", [])
+    ; format("11. := method call: FAIL~n", [])
     ),
     py_free(Result),
     py_free(S).
+
+test_operator_method_call_many :-
+    py_exec("def _sum5(a,b,c,d,e): return a+b+c+d+e"),
+    py_eval("_sum5", Fn),
+    py_from_int(1, A1),
+    py_from_int(2, A2),
+    py_from_int(3, A3),
+    py_from_int(4, A4),
+    py_from_int(5, A5),
+    Result := Fn:'__call__'(A1, A2, A3, A4, A5),
+    py_to_int(Result, V),
+    ( V =:= 15 ->
+        format("12. := method call (many args): OK~n", [])
+    ; format("12. := method call (many args): FAIL~n", [])
+    ),
+    py_free(Result),
+    py_free(A5),
+    py_free(A4),
+    py_free(A3),
+    py_free(A2),
+    py_free(A1),
+    py_free(Fn).
 
 test_collections :-
     py_list_new(L),
@@ -136,8 +177,8 @@ test_collections :-
     py_list_get(L, 0, Item),
     py_to_int(Item, ItemVal),
     ( Len =:= 2, ItemVal =:= 10 ->
-        format("11. collections: OK~n", [])
-    ; format("11. collections: FAIL~n", [])
+        format("13. collections: OK~n", [])
+    ; format("13. collections: FAIL~n", [])
     ),
     py_free(Item),
     py_free(V2),
@@ -147,15 +188,15 @@ test_collections :-
 test_none :-
     py_none(N),
     ( py_is_none(N) ->
-        format("12. none/is_none: OK~n", [])
-    ; format("12. none/is_none: FAIL~n", [])
+        format("14. none/is_none: OK~n", [])
+    ; format("14. none/is_none: FAIL~n", [])
     ),
     py_free(N).
 
 test_json :-
     py_from_json("[1, 2, 3]", H),
     py_to_json(H, Json),
-    format("13. JSON roundtrip: ~w~n", [Json]),
+    format("15. JSON roundtrip: ~w~n", [Json]),
     py_free(H).
 
 test_from_to :-
@@ -164,8 +205,8 @@ test_from_to :-
     py_from_bool(true, H3), py_to_bool(H3, V3),
     py_from_str("test", H4), py_to_str(H4, V4),
     ( V1 =:= 42, V2 > 3.13, V2 < 3.15, V3 = true, V4 = "test" ->
-        format("14. from/to conversions: OK~n", [])
-    ; format("14. from/to conversions: FAIL~n", [])
+        format("16. from/to conversions: OK~n", [])
+    ; format("16. from/to conversions: FAIL~n", [])
     ),
     py_free(H4), py_free(H3), py_free(H2), py_free(H1).
 
@@ -173,8 +214,8 @@ test_error_handling :-
     ( catch(
         py_eval("1/0", _),
         error(python_error(_Err), _),
-        format("15. error handling: OK~n", [])
-    ) -> true ; format("15. error handling: FAIL~n", []) ).
+        format("17. error handling: OK~n", [])
+    ) -> true ; format("17. error handling: FAIL~n", []) ).
 
 test_with_py :-
     py_eval("42", H),
@@ -184,8 +225,8 @@ test_with_py :-
     )),
     py_handle_count(Count),
     ( Count =:= 0 ->
-        format("16. with_py: OK~n", [])
-    ; format("16. with_py: FAIL (handles=~d)~n", [Count])
+        format("18. with_py: OK~n", [])
+    ; format("18. with_py: FAIL (handles=~d)~n", [Count])
     ).
 
 test_setattr :-
@@ -196,8 +237,8 @@ test_setattr :-
     py_getattr(Instance, "x", Got),
     py_to_int(Got, V),
     ( V =:= 99 ->
-        format("17. setattr/getattr: OK~n", [])
-    ; format("17. setattr/getattr: FAIL~n", [])
+        format("19. setattr/getattr: OK~n", [])
+    ; format("19. setattr/getattr: FAIL~n", [])
     ),
     py_free(Got),
     py_free(Val),
@@ -214,8 +255,10 @@ test_setattr :-
     test_py_invoke_0,
     test_py_invoke_1,
     test_py_invoke_2,
+    test_py_invoken,
     test_operator_sugar,
     test_operator_method_call,
+    test_operator_method_call_many,
     test_collections,
     test_none,
     test_json,
@@ -223,6 +266,6 @@ test_setattr :-
     test_error_handling,
     test_with_py,
     test_setattr,
-    format("=== ALL 17 PROLOG API TESTS PASSED ===~n", []),
+    format("=== ALL 19 PROLOG API TESTS PASSED ===~n", []),
     py_finalize
 )).

@@ -40,10 +40,12 @@
     py_call/4,
     py_call/5,
     py_call/6,
+    py_calln/4,
     % Direct calls
     py_invoke/2,
     py_invoke/3,
     py_invoke/4,
+    py_invoken/3,
     % Type conversion
     py_to_str/2,
     py_to_repr/2,
@@ -65,6 +67,7 @@
     py_list_append/2,
     py_list_get/3,
     py_list_len/2,
+    py_list_from_handles/2,
     py_dict_new/1,
     py_dict_set/3,
     py_dict_get/3,
@@ -111,46 +114,49 @@ default_lib_path("./libscryneuro.so").
 
 load_ffi(LibPath) :-
     use_foreign_module(LibPath, [
-        %% Lifecycle
+        % Lifecycle
         'spy_init'([], sint32),
         'spy_finalize'([], void),
-        %% Evaluation
+        % Evaluation
         'spy_eval'([cstr], ptr),
         'spy_exec'([cstr], sint32),
-        %% Modules
+        % Modules
         'spy_import'([cstr], ptr),
-        %% Attribute access
+        % Attribute access
         'spy_getattr'([ptr, cstr], ptr),
         'spy_setattr'([ptr, cstr, ptr], sint32),
-        %% Method calls
-        %% Direct calls (callable objects)
+    % Method calls
+    % Direct calls (callable objects)
         'spy_call0'([ptr], ptr),
         'spy_call1'([ptr, ptr], ptr),
         'spy_call2'([ptr, ptr, ptr], ptr),
         'spy_call3'([ptr, ptr, ptr, ptr], ptr),
-        %% Method calls: obj.method(args...)
+    % Method calls: obj.method(args...)
         'spy_invoke0'([ptr, cstr], ptr),
         'spy_invoke1'([ptr, cstr, ptr], ptr),
         'spy_invoke2'([ptr, cstr, ptr, ptr], ptr),
         'spy_invoke3'([ptr, cstr, ptr, ptr, ptr], ptr),
-        %% Type conversion: Python → C
+        'spy_invoken'([ptr, cstr, ptr], ptr),
+    % Direct calls with list/tuple args
+        'spy_calln'([ptr, ptr], ptr),
+    % Type conversion: Python → C
         'spy_to_str'([ptr], cstr),
         'spy_to_repr'([ptr], cstr),
         'spy_to_int'([ptr], sint64),
         'spy_to_float'([ptr], f64),
         'spy_to_bool'([ptr], sint32),
-        %% Type conversion: C → Python
+    % Type conversion: C → Python
         'spy_from_int'([sint64], ptr),
         'spy_from_float'([f64], ptr),
         'spy_from_bool'([sint32], ptr),
         'spy_from_str'([cstr], ptr),
-        %% None
+    % None
         'spy_none'([], ptr),
         'spy_is_none'([ptr], sint32),
-        %% JSON bridge
+    % JSON bridge
         'spy_to_json'([ptr], cstr),
         'spy_from_json'([cstr], ptr),
-        %% Collections
+    % Collections
         'spy_list_new'([], ptr),
         'spy_list_append'([ptr, ptr], sint32),
         'spy_list_get'([ptr, sint64], ptr),
@@ -158,10 +164,10 @@ load_ffi(LibPath) :-
         'spy_dict_new'([], ptr),
         'spy_dict_set'([ptr, cstr, ptr], sint32),
         'spy_dict_get'([ptr, cstr], ptr),
-        %% Memory management
+    % Memory management
         'spy_drop'([ptr], void),
         'spy_handle_count'([], sint64),
-        %% Error handling
+    % Error handling
         'spy_last_error'([], cstr),
         'spy_last_error_clear'([], void),
         'spy_cstr_free'([ptr], void)
@@ -171,7 +177,7 @@ load_ffi(LibPath) :-
 %% Error Checking
 %% ---------------------------------------------------------------------------
 
-%% Check if a handle is valid (non-zero).
+% Check if a handle is valid (non-zero).
 check_handle(Handle, Context) :-
     ( Handle =:= 0 ->
         ffi:'spy_last_error'(Err),
@@ -179,7 +185,7 @@ check_handle(Handle, Context) :-
     ; true
     ).
 
-%% Check if a status code indicates success (0).
+% Check if a status code indicates success (0).
 check_status(Status, Context) :-
     ( Status =:= 0 -> true
     ; ffi:'spy_last_error'(Err),
@@ -295,6 +301,23 @@ py_call(Obj, Method, Arg1, Arg2, Arg3, Result) :-
     ffi:'spy_invoke3'(Obj, Method, Arg1, Arg2, Arg3, Result),
     check_handle(Result, py_call/6).
 
+py_calln(Obj, Method, Args, Result) :-
+    ( Args = [_|_] ->
+        py_list_from_handles(Args, ArgsHandle),
+        with_py(ArgsHandle, (
+            ffi:'spy_invoken'(Obj, Method, ArgsHandle, Result),
+            check_handle(Result, py_calln/4)
+        ))
+    ; Args = [] ->
+        py_list_from_handles([], ArgsHandle),
+        with_py(ArgsHandle, (
+            ffi:'spy_invoken'(Obj, Method, ArgsHandle, Result),
+            check_handle(Result, py_calln/4)
+        ))
+    ; ffi:'spy_invoken'(Obj, Method, Args, Result),
+      check_handle(Result, py_calln/4)
+    ).
+
 %% ---------------------------------------------------------------------------
 %% Direct Calls: callable(args...)
 %% ---------------------------------------------------------------------------
@@ -313,6 +336,23 @@ py_invoke(Callable, Arg1, Result) :-
 py_invoke(Callable, Arg1, Arg2, Result) :-
     ffi:'spy_call2'(Callable, Arg1, Arg2, Result),
     check_handle(Result, py_invoke/4).
+
+py_invoken(Callable, Args, Result) :-
+    ( Args = [_|_] ->
+        py_list_from_handles(Args, ArgsHandle),
+        with_py(ArgsHandle, (
+            ffi:'spy_calln'(Callable, ArgsHandle, Result),
+            check_handle(Result, py_invoken/3)
+        ))
+    ; Args = [] ->
+        py_list_from_handles([], ArgsHandle),
+        with_py(ArgsHandle, (
+            ffi:'spy_calln'(Callable, ArgsHandle, Result),
+            check_handle(Result, py_invoken/3)
+        ))
+    ; ffi:'spy_calln'(Callable, Args, Result),
+      check_handle(Result, py_invoken/3)
+    ).
 
 %% ---------------------------------------------------------------------------
 %% Type Conversion
@@ -417,6 +457,15 @@ py_list_get(List, Index, Item) :-
 py_list_len(List, Len) :-
     ffi:'spy_list_len'(List, Len).
 
+py_list_from_handles(Handles, List) :-
+    py_list_new(List),
+    py_list_from_handles(Handles, List, List).
+
+py_list_from_handles([], List, List).
+py_list_from_handles([H | Rest], List, Out) :-
+    py_list_append(List, H),
+    py_list_from_handles(Rest, List, Out).
+
 %% py_dict_new(-Handle): Create empty Python dict.
 py_dict_new(Handle) :-
     ffi:'spy_dict_new'(Handle),
@@ -472,6 +521,7 @@ with_py(Handle, Goal) :-
 %% Var := Module:Func(A)      → py_call(Module, Func, A, Var)
 %% Var := Module:Func(A,B)    → py_call(Module, Func, A, B, Var)
 %% Var := Module:Func(A,B,C)  → py_call(Module, Func, A, B, C, Var)
+%% Var := Module:Func(Args..) → py_calln(Module, Func, ArgsList, Var)
 %%
 %% Examples:
 %%   ?- NP := py_import("numpy"),
@@ -512,7 +562,8 @@ Var := Obj:Call :- !,
         ( Args = [A, B, C] -> py_call(Obj, MethodStr, A, B, C, Var)
         ; Args = [A, B]    -> py_call(Obj, MethodStr, A, B, Var)
         ; Args = [A]       -> py_call(Obj, MethodStr, A, Var)
-        ; py_call(Obj, MethodStr, Var)
+        ; Args = []        -> py_call(Obj, MethodStr, Var)
+        ; py_calln(Obj, MethodStr, Args, Var)
         )
     ).
 

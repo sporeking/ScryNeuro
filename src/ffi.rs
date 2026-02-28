@@ -85,6 +85,15 @@ fn reg_insert(obj: Bound<'_, PyAny>) -> Result<isize, String> {
     registry::insert(obj.unbind())
 }
 
+fn args_handle_to_tuple<'py>(py: Python<'py>, args: isize) -> Result<Bound<'py, PyTuple>, String> {
+    let args_obj = registry::get(py, args)?;
+    let args_bound = args_obj.bind(py);
+    match args_bound.downcast::<PySequence>() {
+        Ok(seq) => seq.to_tuple().map_err(|e| pe(py, e)),
+        Err(_) => Err("Args must be a Python sequence".to_string()),
+    }
+}
+
 // ==================== Lifecycle ====================
 
 /// Initialize the Python runtime and handle registry.
@@ -319,6 +328,17 @@ pub extern "C" fn spy_call3(callable: isize, arg1: isize, arg2: isize, arg3: isi
     })
 }
 
+#[no_mangle]
+pub extern "C" fn spy_calln(callable: isize, args: isize) -> isize {
+    gil_handle(|py| {
+        let args_tuple = args_handle_to_tuple(py, args)?;
+        registry::with_object(py, callable, |bound| {
+            let result = bound.call1(args_tuple).map_err(|e| pe(py, e))?;
+            reg_insert(result)
+        })
+    })
+}
+
 // ==================== Method Invocations ====================
 
 /// Call a method with no arguments: `obj.method()`.
@@ -418,6 +438,27 @@ pub unsafe extern "C" fn spy_invoke3(
         registry::with_object(py, obj, |bound| {
             let result = bound
                 .call_method1(&*meth, (a1.bind(py), a2.bind(py), a3.bind(py)))
+                .map_err(|e| pe(py, e))?;
+            reg_insert(result)
+        })
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn spy_invoken(obj: isize, method: *const c_char, args: isize) -> isize {
+    let meth = match unsafe { arg_str(method) } {
+        Ok(s) => s.to_owned(),
+        Err(e) => {
+            clear_last_error();
+            set_last_error(e);
+            return 0;
+        }
+    };
+    gil_handle(|py| {
+        let args_tuple = args_handle_to_tuple(py, args)?;
+        registry::with_object(py, obj, |bound| {
+            let result = bound
+                .call_method1(&*meth, args_tuple)
                 .map_err(|e| pe(py, e))?;
             reg_insert(result)
         })

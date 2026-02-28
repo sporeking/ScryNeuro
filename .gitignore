@@ -1,6 +1,8 @@
 # Build artifacts
+/data/
 /docs/
 /target/
+*.pt
 /libscryneuro.so
 /libscryneuro.dylib
 
