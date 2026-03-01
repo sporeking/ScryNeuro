@@ -194,10 +194,13 @@ chmod +x run.sh
 cargo build --release
 cp target/release/libscryneuro.dylib ./
 
-# 运行
+# 运行 (标准方式)
 DYLD_LIBRARY_PATH=. scryer-prolog examples/basic.pl
-```
 
+# 运行 (若使用 Conda 或 uv，需要确保能找到 libpython)
+PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+DYLD_LIBRARY_PATH=".:$PYLIB:$DYLD_LIBRARY_PATH" scryer-prolog examples/basic.pl
+```
 > **注意**：macOS 的 SIP（系统完整性保护）在某些情况下（从 GUI 应用启动、二进制在 `/usr/bin` 中）会剥离 `DYLD_LIBRARY_PATH`。如遇问题：
 > 1. 使用 `install_name_tool` 嵌入 rpath：`install_name_tool -add_rpath @loader_path/. target/release/libscryneuro.dylib`
 > 2. 或将 `libscryneuro.dylib` 放到标准搜索路径如 `/usr/local/lib`。

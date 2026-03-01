@@ -191,8 +191,12 @@ On macOS, the shared library extension is `.dylib`, and the environment variable
 cargo build --release
 cp target/release/libscryneuro.dylib ./
 
-# Run
+# Run (Standard)
 DYLD_LIBRARY_PATH=. scryer-prolog examples/basic.pl
+
+# Run (if using Conda or uv, to ensure libpython is found)
+PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+DYLD_LIBRARY_PATH=".:$PYLIB:$DYLD_LIBRARY_PATH" scryer-prolog examples/basic.pl
 ```
 
 > **Note**: macOS SIP (System Integrity Protection) strips `DYLD_LIBRARY_PATH` from child processes in some contexts (e.g., from GUI apps, or when the binary is in `/usr/bin`). If you encounter issues:

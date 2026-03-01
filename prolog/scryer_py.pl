@@ -193,8 +193,15 @@ check_status(Status, Context) :-
 %% Tries libscryneuro.dylib first (macOS), falls back to libscryneuro.so (Linux).
 py_init :-
     ( initialized -> true
-    ; ( catch(load_ffi("./libscryneuro.dylib"), _, fail) -> true
-      ; load_ffi("./libscryneuro.so")
+    ; ( catch((open('./libscryneuro.dylib', read, S), close(S)), _, fail) ->
+        ( load_ffi("./libscryneuro.dylib") -> true
+        ; throw(error(python_error("Failed to load libscryneuro.dylib. If using Conda on macOS, try: DYLD_LIBRARY_PATH=\".:$PYLIB:$DYLD_LIBRARY_PATH\" scryer-prolog ..."), py_init/0))
+        )
+      ; catch((open('./libscryneuro.so', read, S), close(S)), _, fail) ->
+        ( load_ffi("./libscryneuro.so") -> true
+        ; throw(error(python_error("Failed to load libscryneuro.so. Check LD_LIBRARY_PATH."), py_init/0))
+        )
+      ; throw(error(python_error("Could not find libscryneuro.dylib or libscryneuro.so. Please build the project and copy the library to the current directory."), py_init/0))
       ),
       ffi:'spy_init'(Status),
       check_status(Status, py_init/0),

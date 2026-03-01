@@ -4,13 +4,15 @@
 lib_path(Path) :-
     ( catch((open('./libscryneuro.dylib', read, S), close(S)), _, fail) ->
         Path = "./libscryneuro.dylib"
-    ; Path = "./libscryneuro.so"
+    ; catch((open('./libscryneuro.so', read, S), close(S)), _, fail) ->
+        Path = "./libscryneuro.so"
+    ; throw(error("Could not find libscryneuro.dylib or libscryneuro.so", lib_path/1))
     ).
 
 
  init :-
     lib_path(LibPath),
-    use_foreign_module(LibPath, [
+    ( use_foreign_module(LibPath, [
         'spy_init'([], sint32),
         'spy_finalize'([], void),
         'spy_last_error'([], cstr),
@@ -51,7 +53,7 @@ lib_path(Path) :-
         'spy_dict_new'([], ptr),
         'spy_dict_set'([ptr, cstr, ptr], sint32),
         'spy_dict_get'([ptr, cstr], ptr)
-    ]).
+    ]) -> true ; throw(error("Failed to load foreign module (check DYLD_LIBRARY_PATH on macOS or LD_LIBRARY_PATH on Linux)", init/0))).
 
 test :-
     write('1. spy_init: '),
