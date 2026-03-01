@@ -8,7 +8,9 @@
 %%   actual tensor computation on CPU or GPU.
 %%
 %% Prerequisites:
-%%   - Build: cargo build --release && cp target/release/libscryneuro.so ./
+%%   - Build: cargo build --release
+%%   -        cp target/release/libscryneuro.so ./     # Linux
+%%   -        cp target/release/libscryneuro.dylib ./  # macOS
 %%   - Python deps: pip install torch torchvision
 %%
 %% Run:

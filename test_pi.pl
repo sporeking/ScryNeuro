@@ -1,7 +1,14 @@
 :- use_module(library(ffi)).
 
+lib_path(Path) :-
+    ( catch((open('./libscryneuro.dylib', read, S), close(S)), _, fail) ->
+        Path = "./libscryneuro.dylib"
+    ; Path = "./libscryneuro.so"
+    ).
+
 init :-
-    use_foreign_module("./libscryneuro.so", [
+    lib_path(LibPath),
+    use_foreign_module(LibPath, [
         'spy_init'([], sint32),
         'spy_finalize'([], void),
         'spy_import'([cstr], ptr),

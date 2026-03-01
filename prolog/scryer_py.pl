@@ -93,7 +93,8 @@
 %% ---------------------------------------------------------------------------
 %% FFI Declarations
 %% ---------------------------------------------------------------------------
-%% Loaded lazily by py_init/1. The library path defaults to ./libscryneuro.so.
+%% Loaded lazily by py_init/0. Tries ./libscryneuro.dylib first (macOS),
+%% then falls back to ./libscryneuro.so (Linux).
 %%
 %% Scryer FFI syntax:
 %%   use_foreign_module(Path, [
@@ -103,8 +104,6 @@
 %% Supported types: void, bool, uint8..uint64, sint8..sint64, f32, f64, ptr, cstr
 
 :- dynamic(initialized/0).
-
-default_lib_path("./libscryneuro.so").
 
 load_ffi(LibPath) :-
     use_foreign_module(LibPath, [
@@ -190,11 +189,16 @@ check_status(Status, Context) :-
 %% Lifecycle
 %% ---------------------------------------------------------------------------
 
-%% py_init/0: Initialize with default library path.
+%% py_init/0: Initialize with auto-detected library path.
+%% Tries libscryneuro.dylib first (macOS), falls back to libscryneuro.so (Linux).
 py_init :-
     ( initialized -> true
-    ; default_lib_path(Path),
-      py_init(Path)
+    ; ( catch(load_ffi("./libscryneuro.dylib"), _, fail) -> true
+      ; load_ffi("./libscryneuro.so")
+      ),
+      ffi:'spy_init'(Status),
+      check_status(Status, py_init/0),
+      assertz(initialized)
     ).
 
 %% py_init/1: Initialize with a custom library path.

@@ -10,7 +10,9 @@
 %%   $ LD_LIBRARY_PATH=. scryer-prolog examples/numpy_torch.pl
 %%
 %% Prerequisites:
-%%   - cargo build --release && cp target/release/libscryneuro.so ./
+%%   - cargo build --release
+%%   - cp target/release/libscryneuro.so ./     # Linux
+%%     cp target/release/libscryneuro.dylib ./  # macOS
 %%   - conda activate py312  (or any env with numpy + torch installed)
 
 :- op(700, xfx, :=).

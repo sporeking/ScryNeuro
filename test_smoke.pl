@@ -2,8 +2,17 @@
 %% use_foreign_module/2 is a runtime goal, not a directive.
 :- use_module(library(ffi)).
 
+%% Detect library path: try .dylib (macOS) by checking file existence,
+%% fall back to .so (Linux).
+lib_path(Path) :-
+    ( catch((open('./libscryneuro.dylib', read, S), close(S)), _, fail) ->
+        Path = "./libscryneuro.dylib"
+    ; Path = "./libscryneuro.so"
+    ).
+
 init :-
-    use_foreign_module("./libscryneuro.so", [
+    lib_path(LibPath),
+    use_foreign_module(LibPath, [
         'spy_init'([], sint32),
         'spy_eval'([cstr], ptr),
         'spy_to_int'([ptr], sint64),

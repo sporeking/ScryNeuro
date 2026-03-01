@@ -6,7 +6,8 @@
 %%
 %% Prerequisites:
 %%   - Build: cargo build --release
-%%   - Copy: cp target/release/libscryneuro.so ./
+%%   - Copy: cp target/release/libscryneuro.so ./     # Linux
+%%   -       cp target/release/libscryneuro.dylib ./  # macOS
 %%   - Python deps: pip install torch numpy
 %%   - For LLM examples: pip install openai
 %%

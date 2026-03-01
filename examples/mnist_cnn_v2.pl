@@ -10,7 +10,9 @@
 %% Compare with mnist_cnn.pl (inline Python strings) to see the difference.
 %%
 %% Prerequisites:
-%%   - Build: cargo build --release && cp target/release/libscryneuro.so ./
+%%   - Build: cargo build --release
+%%   -        cp target/release/libscryneuro.so ./     # Linux
+%%   -        cp target/release/libscryneuro.dylib ./  # macOS
 %%   - Python deps: pip install torch torchvision
 %%
 %% Run:

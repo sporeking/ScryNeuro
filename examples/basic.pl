@@ -9,7 +9,8 @@
 %%
 %% Prerequisites:
 %%   - Build: cargo build --release
-%%   - Copy: cp target/release/libscryneuro.so ./
+%%   - Copy: cp target/release/libscryneuro.so ./     # Linux
+%%   -       cp target/release/libscryneuro.dylib ./  # macOS
 
 :- op(700, xfx, :=).
 :- use_module('../prolog/scryer_py').
