@@ -9,6 +9,17 @@
 %%   ?- py_eval("1 + 2", X), py_to_int(X, V).
 %%   V = 3.
 %%
+%% Cross-project usage (from outside ScryNeuro directory):
+%%   Option A: Set SCRYNEURO_HOME environment variable
+%%     export SCRYNEURO_HOME=/path/to/ScryNeuro
+%%     export LD_LIBRARY_PATH=$SCRYNEURO_HOME:$LD_LIBRARY_PATH
+%%     :- use_module('/path/to/ScryNeuro/prolog/scryer_py').
+%%     ?- py_init.  % auto-discovers library via SCRYNEURO_HOME
+%%
+%%   Option B: Explicit home directory
+%%     :- use_module('/path/to/ScryNeuro/prolog/scryer_py').
+%%     ?- py_init_home("/path/to/ScryNeuro").
+%%
 %% Plugin modules (load separately as needed):
 %%   :- use_module('prolog/scryer_nn').  % nn_load/nn_predict
 %%   :- use_module('prolog/scryer_llm'). % llm_load/llm_generate
@@ -17,14 +28,12 @@
 %% NOTE: The := operator must be defined before the module declaration
 %%        so that the Prolog parser can handle it in the export list.
 :- op(700, xfx, :=).
-%% NOTE: The := operator must be defined before the module declaration
-%%        so that the Prolog parser can handle it in the export list.
-:- op(700, xfx, :=).
 
 :- module(scryer_py, [
     % Lifecycle
     py_init/0,
     py_init/1,
+    py_init_home/1,
     py_finalize/0,
     % Evaluation
     py_eval/2,
@@ -89,6 +98,7 @@
 :- use_module(library(ffi)).
 :- use_module(library(lists)).
 :- use_module(library(format)).
+:- use_module(library(os)).
 
 %% ---------------------------------------------------------------------------
 %% FFI Declarations
@@ -109,6 +119,7 @@ load_ffi(LibPath) :-
     use_foreign_module(LibPath, [
         % Lifecycle
         'spy_init'([], sint32),
+        'spy_init_home'([cstr], sint32),
         'spy_finalize'([], void),
         % Evaluation
         'spy_eval'([cstr], ptr),
@@ -190,30 +201,45 @@ check_status(Status, Context) :-
 %% ---------------------------------------------------------------------------
 
 %% py_init/0: Initialize with auto-detected library path.
-%% Tries libscryneuro.dylib first (macOS), falls back to libscryneuro.so (Linux).
+%% Tries SCRYNEURO_HOME env var first, then falls back to current directory.
+%% Tries .dylib (macOS) first, falls back to .so (Linux).
 py_init :-
     ( initialized -> true
-    ; ( catch((open('./libscryneuro.dylib', read, S), close(S)), _, fail) ->
-        ( load_ffi("./libscryneuro.dylib") -> true
-        ; throw(error(python_error("Failed to load libscryneuro.dylib. If using Conda on macOS, try: DYLD_LIBRARY_PATH=\".:$PYLIB:$DYLD_LIBRARY_PATH\" scryer-prolog ..."), py_init/0))
-        )
-      ; catch((open('./libscryneuro.so', read, S), close(S)), _, fail) ->
-        ( load_ffi("./libscryneuro.so") -> true
-        ; throw(error(python_error("Failed to load libscryneuro.so. Check LD_LIBRARY_PATH."), py_init/0))
-        )
-      ; throw(error(python_error("Could not find libscryneuro.dylib or libscryneuro.so. Please build the project and copy the library to the current directory."), py_init/0))
+    ; ( catch(getenv("SCRYNEURO_HOME", Home), _, fail) ->
+        %% SCRYNEURO_HOME is set — use it to find the library
+        find_lib_in_dir(Home, LibPath),
+        load_ffi(LibPath),
+        ffi:'spy_init_home'(Home, Status),
+        check_status(Status, py_init/0)
+      ; %% No SCRYNEURO_HOME — fall back to current directory
+        find_lib_in_cwd(LibPath),
+        load_ffi(LibPath),
+        ffi:'spy_init'(Status),
+        check_status(Status, py_init/0)
       ),
-      ffi:'spy_init'(Status),
-      check_status(Status, py_init/0),
       assertz(initialized)
     ).
 
 %% py_init/1: Initialize with a custom library path.
+%% The SCRYNEURO_HOME env var (if set) is still used for sys.path.
 py_init(LibPath) :-
     ( initialized -> true
     ; load_ffi(LibPath),
       ffi:'spy_init'(Status),
       check_status(Status, py_init/1),
+      assertz(initialized)
+    ).
+
+%% py_init_home/1: Initialize with an explicit ScryNeuro home directory.
+%% Use this when SCRYNEURO_HOME is not set and you want to specify the
+%% ScryNeuro root directory directly.
+%%   ?- py_init_home("/path/to/ScryNeuro").
+py_init_home(Home) :-
+    ( initialized -> true
+    ; find_lib_in_dir(Home, LibPath),
+      load_ffi(LibPath),
+      ffi:'spy_init_home'(Home, Status),
+      check_status(Status, py_init_home/1),
       assertz(initialized)
     ).
 
@@ -223,6 +249,31 @@ py_finalize :-
         ffi:'spy_finalize',
         retractall(initialized)
     ; true
+    ).
+
+%% ---------------------------------------------------------------------------
+%% Library Discovery Helpers
+%% ---------------------------------------------------------------------------
+
+%% find_lib_in_dir(+Dir, -LibPath): Find libscryneuro in a specific directory.
+find_lib_in_dir(Dir, LibPath) :-
+    ( append(Dir, "/libscryneuro.dylib", DylibPath),
+      catch((open(DylibPath, read, S), close(S)), _, fail) ->
+        LibPath = DylibPath
+    ; append(Dir, "/libscryneuro.so", SoPath),
+      catch((open(SoPath, read, S), close(S)), _, fail) ->
+        LibPath = SoPath
+    ; append("Could not find libscryneuro in directory: ", Dir, Msg),
+      throw(error(python_error(Msg), py_init/0))
+    ).
+
+%% find_lib_in_cwd(-LibPath): Find libscryneuro in the current directory.
+find_lib_in_cwd(LibPath) :-
+    ( catch((open('./libscryneuro.dylib', read, S), close(S)), _, fail) ->
+        LibPath = "./libscryneuro.dylib"
+    ; catch((open('./libscryneuro.so', read, S), close(S)), _, fail) ->
+        LibPath = "./libscryneuro.so"
+    ; throw(error(python_error("Could not find libscryneuro.dylib or libscryneuro.so. Set SCRYNEURO_HOME or run from the ScryNeuro directory."), py_init/0))
     ).
 
 %% ---------------------------------------------------------------------------

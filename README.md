@@ -139,13 +139,24 @@ The build output should show `Building with Python 3.12.x` (matching your active
 
 ### Step 5: Verify
 
-```bash
-# Linux
-LD_LIBRARY_PATH=. scryer-prolog examples/basic.pl
+ScryNeuro requires **two shared libraries** at runtime:
 
-# macOS
-DYLD_LIBRARY_PATH=. scryer-prolog examples/basic.pl
+1. **`libscryneuro.so`** — the Prolog↔Python bridge (in project root after `cp`)
+2. **`libpython3.x.so`** — the Python shared library (location varies by system/environment)
+
+The `LD_LIBRARY_PATH` (Linux) or `DYLD_LIBRARY_PATH` (macOS) tells the OS dynamic linker where to find these `.so` files.
+
+```bash
+# Linux — robust command that works on all distros and environments:
+PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/basic.pl
+
+# macOS:
+PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+DYLD_LIBRARY_PATH=".:$PYLIB:$DYLD_LIBRARY_PATH" scryer-prolog examples/basic.pl
 ```
+
+> **Shortcut**: On some systems (e.g., Arch Linux with the `python` system package), `libpython3.x.so` is already in `/usr/lib/` (a default linker search path), so `LD_LIBRARY_PATH=.` alone suffices. However, the robust command above works **everywhere** — including Debian/Ubuntu, Fedora, and conda/venv environments where `libpython` lives in a non-default path. See [Understanding `LD_LIBRARY_PATH`](#understanding-ld_library_path-linux) for details.
 
 Expected output:
 ```
@@ -156,23 +167,160 @@ sum(0..99) = 4950
 === All basic examples complete ===
 ```
 
+### Cross-Project Usage
+
+ScryNeuro can be called from Prolog projects located outside the ScryNeuro directory. There are two approaches:
+
+#### Option A: `SCRYNEURO_HOME` Environment Variable (Recommended)
+
+Set `SCRYNEURO_HOME` to point to your ScryNeuro installation. `py_init/0` will automatically discover the shared library and configure Python's `sys.path`.
+
+```bash
+export SCRYNEURO_HOME=/path/to/ScryNeuro
+
+# Ensure both libscryneuro.so and libpython3.x.so are discoverable
+PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+export LD_LIBRARY_PATH="$SCRYNEURO_HOME:$PYLIB:$LD_LIBRARY_PATH"  # Linux
+# export DYLD_LIBRARY_PATH="$SCRYNEURO_HOME:$PYLIB:$DYLD_LIBRARY_PATH"  # macOS
+
+# Run your project from anywhere
+scryer-prolog /path/to/your_project/main.pl
+```
+
+In your Prolog code, use an absolute path to load the module:
+
+```prolog
+:- op(700, xfx, :=).
+:- use_module('/path/to/ScryNeuro/prolog/scryer_py').
+
+main :-
+    py_init,           %% auto-discovers library via SCRYNEURO_HOME
+    X := py_eval("1 + 2"),
+    py_to_int(X, V),
+    format("Result: ~d~n", [V]),
+    py_free(X),
+    py_finalize.
+```
+
+#### Option B: Explicit Home Directory
+
+Use `py_init_home/1` to specify the ScryNeuro root directory directly, without setting any environment variables:
+
+```prolog
+:- use_module('/path/to/ScryNeuro/prolog/scryer_py').
+
+main :-
+    py_init_home("/path/to/ScryNeuro"),
+    %% ... your code ...
+    py_finalize.
+```
+
+You still need `LD_LIBRARY_PATH` (or `DYLD_LIBRARY_PATH` on macOS) to include the ScryNeuro directory so the OS can find `libscryneuro.so`.
+
+#### Convenience Wrapper for Cross-Project Use
+
+Create a `run.sh` in your project:
+
+```bash
+#!/bin/bash
+# Run a Prolog script with ScryNeuro from any directory
+SCRYNEURO=/path/to/ScryNeuro
+
+eval "$(conda shell.bash hook)"
+conda activate scryneuro
+
+export SCRYNEURO_HOME=$SCRYNEURO
+PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+export LD_LIBRARY_PATH="$SCRYNEURO:$PYLIB:$LD_LIBRARY_PATH"
+
+scryer-prolog "$@"
+```
+
+Then run: `./run.sh main.pl`
+
 ---
 
 ## Platform-Specific Notes
 
 ### Linux
 
-The `RTLD_GLOBAL` mechanism in `spy_init()` automatically re-opens `libpython3.x.so` with global symbol visibility, which is required for C extensions like NumPy and PyTorch. You must ensure `libpython` is discoverable:
+#### Understanding `LD_LIBRARY_PATH` {#understanding-ld_library_path-linux}
 
+ScryNeuro loads **two shared libraries** at runtime:
+
+| Library | What it is | Where it lives |
+|---|---|---|
+| `libscryneuro.so` | The Prolog↔Python bridge | ScryNeuro project root (after `cp`) |
+| `libpython3.x.so` | Python’s shared library | Varies by system and environment |
+
+The Linux dynamic linker (`ld.so`) searches for `.so` files in this order:
+1. `LD_LIBRARY_PATH` (user-set)
+2. `/etc/ld.so.cache` (configured via `/etc/ld.so.conf` and `ldconfig`)
+3. `/lib`, `/usr/lib` (built-in defaults)
+
+If **both** libraries are in those default paths, you don’t need `LD_LIBRARY_PATH` at all. In practice, `libscryneuro.so` is never in a default path (it’s in your project), so you always need at least `.` in `LD_LIBRARY_PATH`.
+
+Whether you also need to add `libpython`’s path depends on your system:
+
+| Environment | `libpython` location | `LD_LIBRARY_PATH=.` sufficient? | Why |
+|---|---|---|---|
+| Arch Linux + system `python` package | `/usr/lib/` | ✅ Yes | `/usr/lib/` is a default search path |
+| Arch Linux + conda (but system `python` pkg installed) | `/usr/lib/` (system pkg provides it) | ✅ Yes | Even with conda active, the system `libpython.so` in `/usr/lib/` is found by the linker |
+| Debian/Ubuntu + `libpython3-dev` | `/usr/lib/x86_64-linux-gnu/` | ✅ Yes | Multiarch path is in `ld.so.conf` |
+| Debian/Ubuntu + conda | `~/miniconda3/envs/.../lib/` | ❌ No | Conda’s lib dir is not in any default search path |
+| Fedora + conda | `~/miniconda3/envs/.../lib/` | ❌ No | Same reason |
+| Any distro + `pyenv` (with `--enable-shared`) | `~/.pyenv/versions/.../lib/` | ❌ No | Not in default path |
+| Using `run.sh` wrapper | Any | ✅ (handled by script) | Script sets `LD_LIBRARY_PATH` automatically |
+
+**Key insight**: There are two separate dependency layers:
+1. **OS dynamic linker** — finds `.so` files (this is what `LD_LIBRARY_PATH` controls)
+2. **Python package system** — finds Python packages/modules (this is what conda/pip manages)
+
+Conda provides Python *packages*, but `libpython.so` itself may come from either the conda environment or the system. When a system package (e.g., Arch’s `python` pacman package) provides `libpython.so` in `/usr/lib/`, the linker finds it there regardless of which conda environment is active.
+
+#### Recommended Commands
+
+**One-liner (always works):**
 ```bash
-# Option 1: Set LD_LIBRARY_PATH (recommended for conda)
-export LD_LIBRARY_PATH=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))"):$LD_LIBRARY_PATH
+PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/basic.pl
+```
 
-# Option 2: Use LD_PRELOAD (if RTLD_GLOBAL auto-detection fails)
+**If you know `.` alone is enough for your system:**
+```bash
+LD_LIBRARY_PATH=. scryer-prolog examples/basic.pl
+```
+
+#### RTLD_GLOBAL (C Extensions)
+
+The `RTLD_GLOBAL` mechanism in `spy_init()` automatically re-opens `libpython3.x.so` with global symbol visibility. This is required for C extensions like NumPy and PyTorch to resolve symbols correctly. You don’t need to do anything special — just ensure `libpython` is discoverable via `LD_LIBRARY_PATH` as described above.
+
+If `RTLD_GLOBAL` auto-detection fails (rare), fall back to `LD_PRELOAD`:
+```bash
 export LD_PRELOAD=$(python3 -c "import sysconfig, os; print(os.path.join(sysconfig.get_config_var('LIBDIR'), 'libpython3.12.so'))")
 ```
 
-**Convenience wrapper** — create a `run.sh`:
+#### Persistent Shell Configuration
+
+To avoid setting `LD_LIBRARY_PATH` every session, add this to `~/.bashrc` or `~/.zshrc`:
+
+```bash
+# === ScryNeuro Configuration ===
+# Set SCRYNEURO_HOME to your ScryNeuro installation directory.
+# This enables cross-project usage (calling ScryNeuro from any directory).
+export SCRYNEURO_HOME="$HOME/path/to/ScryNeuro"
+
+# Ensure the dynamic linker can find libscryneuro.so and libpython3.x.so.
+# This queries the active Python environment for libpython's location.
+export LD_LIBRARY_PATH="$SCRYNEURO_HOME:$(python3 -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))'):$LD_LIBRARY_PATH"
+```
+
+> **Note**: If you use conda, the `python3` in the snippet above refers to whichever Python is active when the shell starts. If you activate a different conda environment later, `$LD_LIBRARY_PATH` will still point to the original environment’s `libpython`. This is usually fine because `libpython3.12.so` is ABI-compatible across conda envs of the same Python version. If you switch Python *versions*, rebuild ScryNeuro (`cargo clean && cargo build --release`).
+
+> **Alternative**: If you prefer a per-invocation approach (no persistent config), use the `run.sh` wrapper described in [Cross-Project Usage](#cross-project-usage) or in the convenience wrapper below.
+
+#### Convenience Wrapper (`run.sh`)
+
 ```bash
 #!/bin/bash
 # Activate conda env and run a Prolog script with ScryNeuro
@@ -191,12 +339,12 @@ On macOS, the shared library extension is `.dylib`, and the environment variable
 cargo build --release
 cp target/release/libscryneuro.dylib ./
 
-# Run (Standard)
-DYLD_LIBRARY_PATH=. scryer-prolog examples/basic.pl
-
-# Run (if using Conda or uv, to ensure libpython is found)
+# Run (robust — works with conda, uv, Homebrew, system Python):
 PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
 DYLD_LIBRARY_PATH=".:$PYLIB:$DYLD_LIBRARY_PATH" scryer-prolog examples/basic.pl
+
+# Run (shortcut — if libpython is already in a default search path):
+DYLD_LIBRARY_PATH=. scryer-prolog examples/basic.pl
 ```
 
 > **Note**: macOS SIP (System Integrity Protection) strips `DYLD_LIBRARY_PATH` from child processes in some contexts (e.g., from GUI apps, or when the binary is in `/usr/bin`). If you encounter issues:
@@ -309,7 +457,7 @@ String-returning FFI functions, such as `py_to_str` or `py_to_json`, write their
 These predicates manage the state of the embedded Python interpreter.
 
 #### py_init/0
-Initialize the Python interpreter with the default library path `./libscryneuro.so`. This call is idempotent, meaning it does nothing if the interpreter is already initialized. On Linux, it handles `RTLD_GLOBAL` for C extensions and adds the current directory `.` to `sys.path`.
+Initialize the Python interpreter with the default library path `./libscryneuro.so`. This call is idempotent, meaning it does nothing if the interpreter is already initialized. On Linux, it handles `RTLD_GLOBAL` for C extensions and adds the current directory `.` to `sys.path`. If the `SCRYNEURO_HOME` environment variable is set, the library is loaded from that directory and `$SCRYNEURO_HOME/python` is added to `sys.path`, enabling cross-project usage.
 
 #### py_init/1
 Initialize the interpreter with a custom path to the shared library. This is also idempotent.
@@ -317,6 +465,13 @@ Initialize the interpreter with a custom path to the shared library. This is als
 | Parameter | Type | Description |
 |---|---|---|
 | Path | String | Path to the shared library file |
+
+#### py_init_home/1
+Initialize the interpreter using an explicit ScryNeuro root directory. The shared library is loaded from `Home/libscryneuro.so` (or `.dylib` on macOS), and `Home/python` is added to `sys.path`. Use this as an alternative to the `SCRYNEURO_HOME` environment variable.
+
+| Parameter | Type | Description |
+|---|---|---|
+| Home | String | Absolute path to the ScryNeuro root directory |
 
 #### py_finalize/0
 Shuts down the Python interpreter, clears the handle registry, and retracts the initialization flag. It is safe to call even if the interpreter wasn't initialized.
@@ -332,6 +487,11 @@ main :-
 
 main_custom :-
     py_init("/opt/lib/libscryneuro.so"),  % Custom path
+    % ... your code ...
+    py_finalize.
+
+main_cross_project :-
+    py_init_home("/path/to/ScryNeuro"),  % Explicit home directory
     % ... your code ...
     py_finalize.
 ```
@@ -1366,13 +1526,17 @@ numpy_demo :-
 | `examples/rl_demo.pl` | DQN agent on CartPole-v1 — create, train, evaluate, save, load |
 
 ```bash
-# Run all examples
-LD_LIBRARY_PATH=. scryer-prolog examples/basic.pl
-LD_LIBRARY_PATH=. scryer-prolog examples/neural.pl
-LD_LIBRARY_PATH=. scryer-prolog examples/numpy_torch.pl
-LD_LIBRARY_PATH=. scryer-prolog examples/mnist_cnn.pl
-LD_LIBRARY_PATH=. scryer-prolog examples/mnist_cnn_v2.pl
-LD_LIBRARY_PATH=. scryer-prolog examples/rl_demo.pl
+# Run all examples (robust — works on all systems)
+PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/basic.pl
+LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/neural.pl
+LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/numpy_torch.pl
+LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/mnist_cnn.pl
+LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/mnist_cnn_v2.pl
+LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/rl_demo.pl
+
+# Or use run.sh (see Platform-Specific Notes > Linux > Convenience Wrapper)
+# ./run.sh examples/basic.pl
 ```
 
 ---

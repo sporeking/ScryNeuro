@@ -96,16 +96,9 @@ fn args_handle_to_tuple<'py>(py: Python<'py>, args: isize) -> Result<Bound<'py, 
 
 // ==================== Lifecycle ====================
 
-/// Initialize the Python runtime and handle registry.
-///
-/// On Linux, attempts to re-open `libpython` with `RTLD_GLOBAL` so that
-/// Python C extensions (NumPy, PyTorch) can resolve Python symbols.
-///
-/// Returns `0` on success, `-1` on error.
-#[no_mangle]
-pub extern "C" fn spy_init() -> i32 {
-    clear_last_error();
-
+/// Shared initialization logic: RTLD_GLOBAL, Python runtime, handle registry.
+/// After calling this, use `setup_sys_path` to configure `sys.path`.
+fn init_python_runtime() {
     // RTLD_GLOBAL: make Python symbols globally visible for C extensions.
     #[cfg(target_os = "linux")]
     {
@@ -131,19 +124,82 @@ pub extern "C" fn spy_init() -> i32 {
     // Initialize Python without installing signal handlers (embedding mode).
     pyo3::prepare_freethreaded_python();
     registry::init_registry();
+}
 
-    // Add current working directory and python/ subdirectory to sys.path.
-    // This allows importing scryer_py_runtime and scryer_rl_runtime without
-    // requiring the user to set PYTHONPATH.
-    let result: PyResult<()> = Python::with_gil(|py| {
+/// Configure `sys.path` so that Python runtime modules can be imported.
+///
+/// Always adds `.` and `./python` (backward compat). If `home` is provided,
+/// also adds `<home>` and `<home>/python`. If `home` is `None`, reads the
+/// `SCRYNEURO_HOME` environment variable as fallback.
+fn setup_sys_path(home: Option<&str>) -> PyResult<()> {
+    Python::with_gil(|py| {
         let sys = py.import("sys")?;
         let path = sys.getattr("path")?;
+
+        // Always add cwd-relative paths for backward compatibility.
         path.call_method1("insert", (0i32, "."))?;
         path.call_method1("insert", (0i32, "./python"))?;
-        Ok(())
-    });
 
-    match result {
+        // Determine ScryNeuro home directory.
+        let resolved_home: Option<String> = match home {
+            Some(h) => Some(h.to_owned()),
+            None => std::env::var("SCRYNEURO_HOME").ok(),
+        };
+
+        // Prepend home-based paths (higher priority than cwd).
+        if let Some(ref h) = resolved_home {
+            let python_dir = format!("{}/python", h);
+            path.call_method1("insert", (0i32, python_dir.as_str()))?;
+            path.call_method1("insert", (0i32, h.as_str()))?;
+        }
+
+        Ok(())
+    })
+}
+
+/// Initialize the Python runtime and handle registry.
+///
+/// On Linux, attempts to re-open `libpython` with `RTLD_GLOBAL` so that
+/// Python C extensions (NumPy, PyTorch) can resolve Python symbols.
+///
+/// Reads the `SCRYNEURO_HOME` environment variable (if set) to add the
+/// ScryNeuro `python/` directory to `sys.path`, enabling cross-project usage.
+///
+/// Returns `0` on success, `-1` on error.
+#[no_mangle]
+pub extern "C" fn spy_init() -> i32 {
+    clear_last_error();
+    init_python_runtime();
+
+    match setup_sys_path(None) {
+        Ok(()) => 0,
+        Err(e) => {
+            Python::with_gil(|py| set_last_error(pe(py, e)));
+            -1
+        }
+    }
+}
+
+/// Initialize the Python runtime with an explicit ScryNeuro home directory.
+///
+/// Same as `spy_init`, but uses `home` instead of the `SCRYNEURO_HOME`
+/// environment variable to locate Python runtime modules.
+///
+/// Returns `0` on success, `-1` on error.
+#[no_mangle]
+pub unsafe extern "C" fn spy_init_home(home: *const c_char) -> i32 {
+    let home_str = match unsafe { arg_str(home) } {
+        Ok(s) => s.to_owned(),
+        Err(e) => {
+            clear_last_error();
+            set_last_error(e);
+            return -1;
+        }
+    };
+    clear_last_error();
+    init_python_runtime();
+
+    match setup_sys_path(Some(&home_str)) {
         Ok(()) => 0,
         Err(e) => {
             Python::with_gil(|py| set_last_error(pe(py, e)));

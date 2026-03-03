@@ -138,13 +138,24 @@ cp target/release/libscryneuro.so ./     # Linux
 
 ### 第五步：验证
 
-```bash
-# Linux
-LD_LIBRARY_PATH=. scryer-prolog examples/basic.pl
+ScryNeuro 在运行时需要**两个共享库**：
 
-# macOS
-DYLD_LIBRARY_PATH=. scryer-prolog examples/basic.pl
+1. **`libscryneuro.so`** — Prolog↔Python 桥接库（编译后 `cp` 到项目根目录）
+2. **`libpython3.x.so`** — Python 的共享库（位置因系统/环境而异）
+
+`LD_LIBRARY_PATH`（Linux）或 `DYLD_LIBRARY_PATH`（macOS）告诉操作系统的动态链接器去哪里找这些 `.so` 文件。
+
+```bash
+# Linux — 通用命令，适用于所有发行版和环境：
+PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/basic.pl
+
+# macOS：
+PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+DYLD_LIBRARY_PATH=".:$PYLIB:$DYLD_LIBRARY_PATH" scryer-prolog examples/basic.pl
 ```
+
+> **简写方式**：在某些系统上（如安装了 `python` 系统包的 Arch Linux），`libpython3.x.so` 已在 `/usr/lib/`（默认链接器搜索路径）中，因此 `LD_LIBRARY_PATH=.` 就够了。但上面的通用命令在**所有环境**下都能正常工作——包括 Debian/Ubuntu、Fedora、以及 conda/venv 环境（这些环境中 `libpython` 在非默认路径）。详见[理解 `LD_LIBRARY_PATH`](#理解-ld_library_path)。
 
 预期输出：
 ```
@@ -155,23 +166,212 @@ sum(0..99) = 4950
 === All basic examples complete ===
 ```
 
+### 跨项目使用（Cross-Project Usage）
+
+默认情况下，ScryNeuro 只能在其自身的安装目录中运行——因为 `py_init/0` 需要在当前目录找到 `libscryneuro.so`，同时 Python 的 `sys.path` 也需要包含 ScryNeuro 的 `python/` 目录才能加载运行时模块。
+
+通过设置 `SCRYNEURO_HOME` 环境变量或使用 `py_init_home/1` 谓词，你可以在**任何位置**的 Prolog 项目中调用 ScryNeuro 的全部功能。
+
+#### 工作原理
+
+跨项目调用涉及三条路径依赖，`SCRYNEURO_HOME` 会逐一解决它们：
+
+| 依赖 | 原先（仅限本目录） | 设置 SCRYNEURO_HOME 后 |
+|---|---|---|
+| 共享库 `.so` | 在 `./` 中查找 `libscryneuro.so` | 在 `$SCRYNEURO_HOME/` 中查找 |
+| Python 模块 | `sys.path` 仅包含 `.` 和 `./python` | 额外添加 `$SCRYNEURO_HOME` 和 `$SCRYNEURO_HOME/python` |
+| Prolog 模块 | `use_module('prolog/scryer_py')` （相对路径）| 使用绝对路径 `use_module('/path/to/ScryNeuro/prolog/scryer_py')` |
+
+#### 方案 A：`SCRYNEURO_HOME` 环境变量（推荐）
+
+设置 `SCRYNEURO_HOME` 指向 ScryNeuro 的安装目录。`py_init/0` 会自动在该目录中查找共享库，并将 Python 的 `sys.path` 配置正确。
+
+**第一步：设置环境变量**
+
+```bash
+# 设置 ScryNeuro 安装路径
+export SCRYNEURO_HOME=/path/to/ScryNeuro
+
+# 确保 libscryneuro.so 和 libpython3.x.so 都可被动态链接器找到
+PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+export LD_LIBRARY_PATH="$SCRYNEURO_HOME:$PYLIB:$LD_LIBRARY_PATH"          # Linux
+# export DYLD_LIBRARY_PATH="$SCRYNEURO_HOME:$PYLIB:$DYLD_LIBRARY_PATH"    # macOS
+```
+
+**第二步：在你的项目中使用**
+
+```prolog
+%% 你的项目: /home/user/my_project/main.pl
+:- op(700, xfx, :=).
+:- use_module('/path/to/ScryNeuro/prolog/scryer_py').  %% 使用绝对路径
+
+%% 如果需要插件，同样使用绝对路径
+%% :- use_module('/path/to/ScryNeuro/prolog/scryer_nn').
+%% :- use_module('/path/to/ScryNeuro/prolog/scryer_rl').
+
+main :-
+    py_init,              %% 自动通过 SCRYNEURO_HOME 定位库文件
+    X := py_eval("1 + 2"),
+    py_to_int(X, Val),
+    format("结果: ~d~n", [Val]),
+    py_free(X),
+    py_finalize.
+
+:- initialization(main).
+```
+
+**第三步：从你的项目目录运行**
+
+```bash
+cd /home/user/my_project
+scryer-prolog main.pl
+```
+
+#### 方案 B：使用 `py_init_home/1` 显式指定路径
+
+如果你不想设置环境变量，可以在 Prolog 代码中直接指定 ScryNeuro 的安装目录：
+
+```prolog
+:- use_module('/path/to/ScryNeuro/prolog/scryer_py').
+
+main :-
+    py_init_home("/path/to/ScryNeuro"),  %% 显式指定，无需环境变量
+    %% ... 你的代码 ...
+    py_finalize.
+```
+
+> **注意**：即使使用 `py_init_home/1`，你仍然需要设置 `LD_LIBRARY_PATH`（macOS 上为 `DYLD_LIBRARY_PATH`）来包含 ScryNeuro 目录，因为操作系统的动态链接器需要它来查找 `libscryneuro.so`。
+
+#### 跨项目便捷启动脚本
+
+在你的项目中创建一个 `run.sh`：
+
+```bash
+#!/bin/bash
+# 从任意目录运行使用 ScryNeuro 的 Prolog 脚本
+SCRYNEURO=/path/to/ScryNeuro
+
+# 激活 Python 环境（按你的实际情况选择）
+eval "$(conda shell.bash hook)"
+conda activate scryneuro
+# 或者：source /path/to/.venv/bin/activate
+
+# 设置所有必要的环境变量
+export SCRYNEURO_HOME=$SCRYNEURO
+PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+export LD_LIBRARY_PATH="$SCRYNEURO:$PYLIB:$LD_LIBRARY_PATH"
+
+scryer-prolog "$@"
+```
+
+使用方式：
+```bash
+chmod +x run.sh
+./run.sh main.pl
+```
+
+#### 常见问题
+
+**Q: 为什么 `use_module` 必须用绝对路径？**
+
+因为 Scryer Prolog 从当前工作目录解析相对路径。如果你的项目在 `/home/user/my_project`，写 `use_module('prolog/scryer_py')` 会去找 `/home/user/my_project/prolog/scryer_py.pl`，这个文件并不存在。
+
+**Q: 插件模块（scryer_nn / scryer_rl / scryer_llm）也能跨项目使用吗？**
+
+可以。同样使用绝对路径加载即可：
+```prolog
+:- use_module('/path/to/ScryNeuro/prolog/scryer_nn').
+:- use_module('/path/to/ScryNeuro/prolog/scryer_rl').
+:- use_module('/path/to/ScryNeuro/prolog/scryer_llm').
+```
+插件内部的 Python 模块（如 `scryer_nn_runtime.py`）会通过 `SCRYNEURO_HOME` 或 `py_init_home/1` 设置的 `sys.path` 自动被找到。
+
+**Q: 可以把 `SCRYNEURO_HOME` 永久写入 shell 配置吗？**
+
+可以。详见下方[持久化 Shell 配置](#持久化-shell-配置)。
 ---
 
 ## 平台差异说明
 
 ### Linux
 
-`spy_init()` 中的 `RTLD_GLOBAL` 机制会自动将 `libpython3.x.so` 以全局符号可见模式重新打开。这是 NumPy、PyTorch 等 C 扩展库正常运行所必需的。你需要确保 `libpython` 可以被找到：
+#### 理解 `LD_LIBRARY_PATH` {#理解-ld_library_path}
 
+ScryNeuro 在运行时加载**两个共享库**：
+
+| 库 | 说明 | 所在位置 |
+|---|---|---|
+| `libscryneuro.so` | Prolog↔Python 桥接库 | ScryNeuro 项目根目录（`cp` 之后） |
+| `libpython3.x.so` | Python 的共享库 | 因系统和环境而异 |
+
+Linux 动态链接器（`ld.so`）按以下顺序搜索 `.so` 文件：
+1. `LD_LIBRARY_PATH`（用户设置）
+2. `/etc/ld.so.cache`（通过 `/etc/ld.so.conf` 和 `ldconfig` 配置）
+3. `/lib`、`/usr/lib`（内置默认路径）
+
+如果**两个**库都在这些默认路径中，你完全不需要设置 `LD_LIBRARY_PATH`。但实际上 `libscryneuro.so` 从不在默认路径中（它在你的项目目录里），所以 `LD_LIBRARY_PATH` 中至少需要包含 `.`。
+
+是否还需要额外添加 `libpython` 的路径，取决于你的系统：
+
+| 环境 | `libpython` 位置 | `LD_LIBRARY_PATH=.` 够用吗？ | 原因 |
+|---|---|---|---|
+| Arch Linux + 系统 `python` 包 | `/usr/lib/` | ✅ 够用 | `/usr/lib/` 是默认搜索路径 |
+| Arch Linux + conda（但安装了系统 `python` 包） | `/usr/lib/`（系统包提供） | ✅ 够用 | 即使 conda 处于活动状态，链接器仍能在 `/usr/lib/` 中找到系统的 `libpython.so` |
+| Debian/Ubuntu + `libpython3-dev` | `/usr/lib/x86_64-linux-gnu/` | ✅ 够用 | Multiarch 路径已在 `ld.so.conf` 中 |
+| Debian/Ubuntu + conda | `~/miniconda3/envs/.../lib/` | ❌ 不够 | conda 的 lib 目录不在任何默认搜索路径中 |
+| Fedora + conda | `~/miniconda3/envs/.../lib/` | ❌ 不够 | 同上 |
+| 任何发行版 + `pyenv`（带 `--enable-shared`） | `~/.pyenv/versions/.../lib/` | ❌ 不够 | 不在默认路径中 |
+| 使用 `run.sh` 启动脚本 | 任何 | ✅（脚本自动处理） | 脚本自动设置 `LD_LIBRARY_PATH` |
+
+**关键理解**：这里有两个独立的依赖层：
+1. **操作系统动态链接器** — 负责查找 `.so` 文件（`LD_LIBRARY_PATH` 控制的就是这个）
+2. **Python 包管理系统** — 负责查找 Python 包/模块（这是 conda/pip 管理的）
+
+Conda 提供的是 Python *包*，但 `libpython.so` 本身可能来自 conda 环境或系统。当系统包（如 Arch 的 `python` pacman 包）在 `/usr/lib/` 中提供了 `libpython.so` 时，无论哪个 conda 环境处于活动状态，链接器都能在那里找到它。
+
+#### 推荐命令
+
+**一行通用命令（始终有效）：**
 ```bash
-# 方式一：设置 LD_LIBRARY_PATH（推荐用于 conda）
-export LD_LIBRARY_PATH=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))"):$LD_LIBRARY_PATH
+PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/basic.pl
+```
 
-# 方式二：使用 LD_PRELOAD（如果 RTLD_GLOBAL 自动检测失败）
+**如果你确定你的系统只需要 `.`：**
+```bash
+LD_LIBRARY_PATH=. scryer-prolog examples/basic.pl
+```
+
+#### RTLD_GLOBAL（C 扩展支持）
+
+`spy_init()` 中的 `RTLD_GLOBAL` 机制会自动将 `libpython3.x.so` 以全局符号可见模式重新打开。这是 NumPy、PyTorch 等 C 扩展库正确解析符号所必需的。你不需要做任何特殊操作——只需确保 `libpython` 可通过 `LD_LIBRARY_PATH` 被找到即可（如上所述）。
+
+如果 `RTLD_GLOBAL` 自动检测失败（极少见），可使用 `LD_PRELOAD` 作为后备方案：
+```bash
 export LD_PRELOAD=$(python3 -c "import sysconfig, os; print(os.path.join(sysconfig.get_config_var('LIBDIR'), 'libpython3.12.so'))")
 ```
 
-**便捷启动脚本** — 创建 `run.sh`：
+#### 持久化 Shell 配置 {#持久化-shell-配置}
+
+为了避免每次启动终端都要手动设置 `LD_LIBRARY_PATH`，可以将以下内容添加到 `~/.bashrc` 或 `~/.zshrc` 中：
+
+```bash
+# === ScryNeuro 配置 ===
+# 将 SCRYNEURO_HOME 设置为 ScryNeuro 的安装目录。
+# 这样就可以从任何目录调用 ScryNeuro（跨项目使用）。
+export SCRYNEURO_HOME="$HOME/path/to/ScryNeuro"
+
+# 确保动态链接器能找到 libscryneuro.so 和 libpython3.x.so。
+# 此命令会查询当前活动的 Python 环境来获取 libpython 的路径。
+export LD_LIBRARY_PATH="$SCRYNEURO_HOME:$(python3 -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))'):$LD_LIBRARY_PATH"
+```
+
+> **注意**：如果你使用 conda，上面代码片段中的 `python3` 指的是 shell 启动时活动的那个 Python。如果你之后切换到不同的 conda 环境，`$LD_LIBRARY_PATH` 仍然指向原来环境的 `libpython`。通常这没问题，因为相同 Python 版本的 `libpython3.12.so` 在各 conda 环境间是 ABI 兼容的。如果你切换了 Python *版本*，则需要重新编译 ScryNeuro（`cargo clean && cargo build --release`）。
+
+> **替代方案**：如果你更喜欢按需设置（不做持久化配置），可以使用[跨项目使用](#跨项目使用cross-project-usage)中的 `run.sh` 启动脚本，或下方的便捷启动脚本。
+
+#### 便捷启动脚本 (`run.sh`)
+
 ```bash
 #!/bin/bash
 # 激活 conda 环境并运行 Prolog 脚本
@@ -194,12 +394,12 @@ chmod +x run.sh
 cargo build --release
 cp target/release/libscryneuro.dylib ./
 
-# 运行 (标准方式)
-DYLD_LIBRARY_PATH=. scryer-prolog examples/basic.pl
-
-# 运行 (若使用 Conda 或 uv，需要确保能找到 libpython)
+# 运行（通用方式 — 适用于 conda、uv、Homebrew、系统 Python）：
 PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
 DYLD_LIBRARY_PATH=".:$PYLIB:$DYLD_LIBRARY_PATH" scryer-prolog examples/basic.pl
+
+# 运行（简写 — 如果 libpython 已在默认搜索路径中）：
+DYLD_LIBRARY_PATH=. scryer-prolog examples/basic.pl
 ```
 > **注意**：macOS 的 SIP（系统完整性保护）在某些情况下（从 GUI 应用启动、二进制在 `/usr/bin` 中）会剥离 `DYLD_LIBRARY_PATH`。如遇问题：
 > 1. 使用 `install_name_tool` 嵌入 rpath：`install_name_tool -add_rpath @loader_path/. target/release/libscryneuro.dylib`
@@ -241,8 +441,16 @@ main :-
 ```
 
 ```bash
-LD_LIBRARY_PATH=. scryer-prolog my_program.pl    # Linux
-DYLD_LIBRARY_PATH=. scryer-prolog my_program.pl  # macOS
+# Linux（通用命令）：
+PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog my_program.pl
+
+# macOS：
+PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+DYLD_LIBRARY_PATH=".:$PYLIB:$DYLD_LIBRARY_PATH" scryer-prolog my_program.pl
+
+# 或使用 run.sh（见“平台差异说明 > Linux > 便捷启动脚本”）：
+# ./run.sh my_program.pl
 ```
 
 ---
@@ -302,13 +510,19 @@ catch(
 这些谓词用于管理内嵌 Python 解释器的状态。
 
 #### `py_init/0`
-使用默认的库路径 `./libscryneuro.so` 初始化 Python 解释器。这是一个**幂等**操作（即使解释器已初始化，重复调用也不会有副作用）。在 Linux 上，它会自动处理 C 扩展所需的 `RTLD_GLOBAL` 可见性，并将当前目录 `.` 添加入 `sys.path`。
+使用默认的库路径 `./libscryneuro.so` 初始化 Python 解释器。这是一个**幂等**操作（即使解释器已初始化，重复调用也不会有副作用）。在 Linux 上，它会自动处理 C 扩展所需的 `RTLD_GLOBAL` 可见性，并将当前目录 `.` 添加入 `sys.path`。如果设置了 `SCRYNEURO_HOME` 环境变量，则会从该目录加载共享库，并将 `$SCRYNEURO_HOME/python` 添加到 `sys.path`，从而支持跨项目调用。
 
 #### `py_init/1`
 使用自定义路径初始化解释器。同样是幂等操作。
 | 参数 | 类型 | 说明 |
 |---|---|---|
 | Path | 字符串 | 共享库文件的路径 |
+
+#### `py_init_home/1`
+使用显式指定的 ScryNeuro 根目录初始化解释器。共享库将从 `Home/libscryneuro.so`（macOS 上为 `.dylib`）加载，同时 `Home/python` 会被添加到 `sys.path`。可作为 `SCRYNEURO_HOME` 环境变量的替代方案。
+| 参数 | 类型 | 说明 |
+|---|---|---|
+| Home | 字符串 | ScryNeuro 根目录的绝对路径 |
 
 #### `py_finalize/0`
 关闭 Python 解释器，清空句柄注册表并重置初始化标记。即使解释器未初始化，调用也是安全的。
@@ -321,6 +535,16 @@ main :-
     py_init,                % 默认路径初始化
     % ... 你的代码 ...
     py_finalize.            % 干净地关闭退出
+
+main_custom :-
+    py_init("/opt/lib/libscryneuro.so"),  % 自定义路径
+    % ... 你的代码 ...
+    py_finalize.
+
+main_cross_project :-
+    py_init_home("/path/to/ScryNeuro"),  % 显式指定根目录
+    % ... 你的代码 ...
+    py_finalize.
 ```
 
 ### 求值与执行
@@ -847,13 +1071,17 @@ numpy_demo :-
 | `examples/rl_demo.pl` | DQN Agent 训练 CartPole-v1 —— 创建、训练、评估、保存、加载 |
 
 ```bash
-# 运行所有示例
-LD_LIBRARY_PATH=. scryer-prolog examples/basic.pl
-LD_LIBRARY_PATH=. scryer-prolog examples/neural.pl
-LD_LIBRARY_PATH=. scryer-prolog examples/numpy_torch.pl
-LD_LIBRARY_PATH=. scryer-prolog examples/mnist_cnn.pl
-LD_LIBRARY_PATH=. scryer-prolog examples/mnist_cnn_v2.pl
-LD_LIBRARY_PATH=. scryer-prolog examples/rl_demo.pl
+# 运行所有示例（通用命令，适用于所有系统）
+PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/basic.pl
+LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/neural.pl
+LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/numpy_torch.pl
+LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/mnist_cnn.pl
+LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/mnist_cnn_v2.pl
+LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/rl_demo.pl
+
+# 或使用 run.sh（见“平台差异说明 > Linux > 便捷启动脚本”）
+# ./run.sh examples/basic.pl
 ```
 
 ---
