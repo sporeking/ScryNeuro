@@ -20,11 +20,11 @@ ScryNeuro 是一个连接 **Scryer Prolog** 与 **Python** 的高性能桥接框
 
 NN、LLM 和 RL 功能以**可选插件**形式提供——各自为独立模块，按需通过 `use_module` 加载。核心模块 `scryer_py.pl` 只提供 `py_*` 谓词和 `:=` 运算符。
 
-| 插件 | 模块文件 | 谓词 |
-|---|---|---|
-| 神经网络 | `prolog/scryer_nn.pl` | `nn_load/3,4`, `nn_predict/3,4` |
-| 大语言模型 | `prolog/scryer_llm.pl` | `llm_load/3,4`, `llm_generate/3,4` |
-| 强化学习 | `prolog/scryer_rl.pl` | `rl_create/4`, `rl_load/3,4`, `rl_save/2`, `rl_action/3,4`, `rl_train/2,3`, `rl_evaluate/3`, `rl_info/2` |
+| 插件       | 模块文件               | 谓词                                                                                                     |
+| ---------- | ---------------------- | -------------------------------------------------------------------------------------------------------- |
+| 神经网络   | `prolog/scryer_nn.pl`  | `nn_load/3,4`, `nn_predict/3,4`                                                                          |
+| 大语言模型 | `prolog/scryer_llm.pl` | `llm_load/3,4`, `llm_generate/3,4`                                                                       |
+| 强化学习   | `prolog/scryer_rl.pl`  | `rl_create/4`, `rl_load/3,4`, `rl_save/2`, `rl_action/3,4`, `rl_train/2,3`, `rl_evaluate/3`, `rl_info/2` |
 
 每个插件均有对应的 Python 运行时模块（`python/scryer_*_runtime.py`），在首次使用时懒加载。
 ---
@@ -33,11 +33,11 @@ NN、LLM 和 RL 功能以**可选插件**形式提供——各自为独立模块
 
 ### 系统要求
 
-| 组件 | 版本 | 说明 |
-|---|---|---|
-| **Rust** | stable ≥ 1.70 | 推荐使用 `rustup` |
-| **Python** | 3.10 – 3.13 | 必须包含共享库（`libpython3.x.so` / `.dylib`） |
-| **Scryer Prolog** | 最新 git | 须支持 `library(ffi)` |
+| 组件              | 版本          | 说明                                           |
+| ----------------- | ------------- | ---------------------------------------------- |
+| **Rust**          | stable ≥ 1.70 | 推荐使用 `rustup`                              |
+| **Python**        | 3.10 – 3.13   | 必须包含共享库（`libpython3.x.so` / `.dylib`） |
+| **Scryer Prolog** | 最新 git      | 须支持 `library(ffi)`                          |
 
 ### 第一步：安装 Rust
 
@@ -176,11 +176,11 @@ sum(0..99) = 4950
 
 跨项目调用涉及三条路径依赖，`SCRYNEURO_HOME` 会逐一解决它们：
 
-| 依赖 | 原先（仅限本目录） | 设置 SCRYNEURO_HOME 后 |
-|---|---|---|
-| 共享库 `.so` | 在 `./` 中查找 `libscryneuro.so` | 在 `$SCRYNEURO_HOME/` 中查找 |
-| Python 模块 | `sys.path` 仅包含 `.` 和 `./python` | 额外添加 `$SCRYNEURO_HOME` 和 `$SCRYNEURO_HOME/python` |
-| Prolog 模块 | `use_module('prolog/scryer_py')` （相对路径）| 使用绝对路径 `use_module('/path/to/ScryNeuro/prolog/scryer_py')` |
+| 依赖         | 原先（仅限本目录）                            | 设置 SCRYNEURO_HOME 后                                           |
+| ------------ | --------------------------------------------- | ---------------------------------------------------------------- |
+| 共享库 `.so` | 在 `./` 中查找 `libscryneuro.so`              | 在 `$SCRYNEURO_HOME/` 中查找                                     |
+| Python 模块  | `sys.path` 仅包含 `.` 和 `./python`           | 额外添加 `$SCRYNEURO_HOME` 和 `$SCRYNEURO_HOME/python`           |
+| Prolog 模块  | `use_module('prolog/scryer_py')` （相对路径） | 使用绝对路径 `use_module('/path/to/ScryNeuro/prolog/scryer_py')` |
 
 #### 方案 A：`SCRYNEURO_HOME` 环境变量（推荐）
 
@@ -299,10 +299,10 @@ chmod +x run.sh
 
 ScryNeuro 在运行时加载**两个共享库**：
 
-| 库 | 说明 | 所在位置 |
-|---|---|---|
+| 库                | 说明                 | 所在位置                          |
+| ----------------- | -------------------- | --------------------------------- |
 | `libscryneuro.so` | Prolog↔Python 桥接库 | ScryNeuro 项目根目录（`cp` 之后） |
-| `libpython3.x.so` | Python 的共享库 | 因系统和环境而异 |
+| `libpython3.x.so` | Python 的共享库      | 因系统和环境而异                  |
 
 Linux 动态链接器（`ld.so`）按以下顺序搜索 `.so` 文件：
 1. `LD_LIBRARY_PATH`（用户设置）
@@ -313,15 +313,15 @@ Linux 动态链接器（`ld.so`）按以下顺序搜索 `.so` 文件：
 
 是否还需要额外添加 `libpython` 的路径，取决于你的系统：
 
-| 环境 | `libpython` 位置 | `LD_LIBRARY_PATH=.` 够用吗？ | 原因 |
-|---|---|---|---|
-| Arch Linux + 系统 `python` 包 | `/usr/lib/` | ✅ 够用 | `/usr/lib/` 是默认搜索路径 |
-| Arch Linux + conda（但安装了系统 `python` 包） | `/usr/lib/`（系统包提供） | ✅ 够用 | 即使 conda 处于活动状态，链接器仍能在 `/usr/lib/` 中找到系统的 `libpython.so` |
-| Debian/Ubuntu + `libpython3-dev` | `/usr/lib/x86_64-linux-gnu/` | ✅ 够用 | Multiarch 路径已在 `ld.so.conf` 中 |
-| Debian/Ubuntu + conda | `~/miniconda3/envs/.../lib/` | ❌ 不够 | conda 的 lib 目录不在任何默认搜索路径中 |
-| Fedora + conda | `~/miniconda3/envs/.../lib/` | ❌ 不够 | 同上 |
-| 任何发行版 + `pyenv`（带 `--enable-shared`） | `~/.pyenv/versions/.../lib/` | ❌ 不够 | 不在默认路径中 |
-| 使用 `run.sh` 启动脚本 | 任何 | ✅（脚本自动处理） | 脚本自动设置 `LD_LIBRARY_PATH` |
+| 环境                                           | `libpython` 位置             | `LD_LIBRARY_PATH=.` 够用吗？ | 原因                                                                          |
+| ---------------------------------------------- | ---------------------------- | ---------------------------- | ----------------------------------------------------------------------------- |
+| Arch Linux + 系统 `python` 包                  | `/usr/lib/`                  | ✅ 够用                       | `/usr/lib/` 是默认搜索路径                                                    |
+| Arch Linux + conda（但安装了系统 `python` 包） | `/usr/lib/`（系统包提供）    | ✅ 够用                       | 即使 conda 处于活动状态，链接器仍能在 `/usr/lib/` 中找到系统的 `libpython.so` |
+| Debian/Ubuntu + `libpython3-dev`               | `/usr/lib/x86_64-linux-gnu/` | ✅ 够用                       | Multiarch 路径已在 `ld.so.conf` 中                                            |
+| Debian/Ubuntu + conda                          | `~/miniconda3/envs/.../lib/` | ❌ 不够                       | conda 的 lib 目录不在任何默认搜索路径中                                       |
+| Fedora + conda                                 | `~/miniconda3/envs/.../lib/` | ❌ 不够                       | 同上                                                                          |
+| 任何发行版 + `pyenv`（带 `--enable-shared`）   | `~/.pyenv/versions/.../lib/` | ❌ 不够                       | 不在默认路径中                                                                |
+| 使用 `run.sh` 启动脚本                         | 任何                         | ✅（脚本自动处理）            | 脚本自动设置 `LD_LIBRARY_PATH`                                                |
 
 **关键理解**：这里有两个独立的依赖层：
 1. **操作系统动态链接器** — 负责查找 `.so` 文件（`LD_LIBRARY_PATH` 控制的就是这个）
@@ -514,14 +514,14 @@ catch(
 
 #### `py_init/1`
 使用自定义路径初始化解释器。同样是幂等操作。
-| 参数 | 类型 | 说明 |
-|---|---|---|
+| 参数 | 类型   | 说明             |
+| ---- | ------ | ---------------- |
 | Path | 字符串 | 共享库文件的路径 |
 
 #### `py_init_home/1`
 使用显式指定的 ScryNeuro 根目录初始化解释器。共享库将从 `Home/libscryneuro.so`（macOS 上为 `.dylib`）加载，同时 `Home/python` 会被添加到 `sys.path`。可作为 `SCRYNEURO_HOME` 环境变量的替代方案。
-| 参数 | 类型 | 说明 |
-|---|---|---|
+| 参数 | 类型   | 说明                       |
+| ---- | ------ | -------------------------- |
 | Home | 字符串 | ScryNeuro 根目录的绝对路径 |
 
 #### `py_finalize/0`
@@ -552,15 +552,15 @@ main_cross_project :-
 
 #### `py_eval(+Code, -Handle)`
 求值一段 Python **表达式 (expression)** 并返回结果的句柄。表达式必须产生一个值（例如 `1 + 1`，`len([1,2,3])`）。
-| 参数 | 类型 | 说明 |
-|---|---|---|
-| Code | 字符串 | 要计算的 Python 表达式 |
-| Handle | 整数 | 指向计算结果对象的句柄 |
+| 参数   | 类型   | 说明                   |
+| ------ | ------ | ---------------------- |
+| Code   | 字符串 | 要计算的 Python 表达式 |
+| Handle | 整数   | 指向计算结果对象的句柄 |
 
 #### `py_exec(+Code)`
 执行一段 Python **语句 (statement)**。适用于没有返回值的代码，例如 `import`、变量赋值或类/函数定义。
-| 参数 | 类型 | 说明 |
-|---|---|---|
+| 参数 | 类型   | 说明                 |
+| ---- | ------ | -------------------- |
 | Code | 字符串 | 要执行的 Python 语句 |
 
 #### `py_exec_lines(+Lines)`
@@ -605,21 +605,21 @@ eval_exec_demo :-
 
 #### `py_import(+ModuleName, -Handle)`
 根据名称导入 Python 模块，返回指向该模块对象的句柄。
-| 参数 | 类型 | 说明 |
-|---|---|---|
+| 参数       | 类型   | 说明                          |
+| ---------- | ------ | ----------------------------- |
 | ModuleName | 字符串 | 模块名称 (如 "math", "numpy") |
-| Handle | 整数 | 模块对象的句柄 |
+| Handle     | 整数   | 模块对象的句柄                |
 
 ### 属性访问 (Attribute Access)
 读取和设置 Python 对象的属性。
 
 #### `py_getattr(+Obj, +AttrName, -Value)`
 获取对象的属性值。
-| 参数 | 类型 | 说明 |
-|---|---|---|
-| Obj | 句柄 | Python 对象 |
-| AttrName | 字符串 | 属性名称 |
-| Value | 句柄 | 属性值的句柄 |
+| 参数     | 类型   | 说明         |
+| -------- | ------ | ------------ |
+| Obj      | 句柄   | Python 对象  |
+| AttrName | 字符串 | 属性名称     |
+| Value    | 句柄   | 属性值的句柄 |
 
 #### `py_setattr(+Obj, +AttrName, +Value)`
 设置对象的属性值。
@@ -654,12 +654,12 @@ attr_demo :-
 
 #### `py_call(+Obj, +Method, -Result)` (支持 0 到 3 个参数)
 调用对象的方法。最后一个参数始终是输出结果的句柄。
-| 参数 | 类型 | 说明 |
-|---|---|---|
-| Obj | 句柄 | Python 对象 |
+| 参数   | 类型   | 说明                                        |
+| ------ | ------ | ------------------------------------------- |
+| Obj    | 句柄   | Python 对象                                 |
 | Method | 字符串 | 方法名（必须是字符串/字符列表，不能是原子） |
-| ArgX | 句柄 | 传入的参数句柄 |
-| Result | 句柄 | 返回值的句柄 |
+| ArgX   | 句柄   | 传入的参数句柄                              |
+| Result | 句柄   | 返回值的句柄                                |
 
 #### `py_calln(+Obj, +Method, +Args, -Result)`
 调用支持 N 个参数的方法。`Args` 可以是 Prolog 句柄列表 `[H1, H2, ...]`，也可以是现有 Python 列表的句柄。
@@ -675,17 +675,17 @@ attr_demo :-
 ### 类型转换 (Type Conversion)
 在 Prolog 和 Python 类型之间转换数据。
 
-| 谓词 | 方向 | Prolog 类型 | Python 类型 |
-|---|---|---|---|
-| `py_to_str/2` | Py -> Pl | 字符串 (字符列表) | `str(obj)` |
-| `py_to_repr/2` | Py -> Pl | 字符串 (字符列表) | `repr(obj)` |
-| `py_to_int/2` | Py -> Pl | 整数 | `int` |
-| `py_to_float/2` | Py -> Pl | 浮点数 | `float` |
-| `py_to_bool/2` | Py -> Pl | 原子 (`true`/`false`) | `bool` |
-| `py_from_int/2` | Pl -> Py | 整数 | `int` |
-| `py_from_float/2` | Pl -> Py | 浮点数 | `float` |
-| `py_from_bool/2` | Pl -> Py | 原子 (`true`/`false`) | `bool` |
-| `py_from_str/2` | Pl -> Py | 字符串 (字符列表) | `str` |
+| 谓词              | 方向     | Prolog 类型           | Python 类型 |
+| ----------------- | -------- | --------------------- | ----------- |
+| `py_to_str/2`     | Py -> Pl | 字符串 (字符列表)     | `str(obj)`  |
+| `py_to_repr/2`    | Py -> Pl | 字符串 (字符列表)     | `repr(obj)` |
+| `py_to_int/2`     | Py -> Pl | 整数                  | `int`       |
+| `py_to_float/2`   | Py -> Pl | 浮点数                | `float`     |
+| `py_to_bool/2`    | Py -> Pl | 原子 (`true`/`false`) | `bool`      |
+| `py_from_int/2`   | Pl -> Py | 整数                  | `int`       |
+| `py_from_float/2` | Pl -> Py | 浮点数                | `float`     |
+| `py_from_bool/2`  | Pl -> Py | 原子 (`true`/`false`) | `bool`      |
+| `py_from_str/2`   | Pl -> Py | 字符串 (字符列表)     | `str`       |
 
 > **避坑指南**：
 > - `py_to_int` 发生错误时会返回 `0`。如果预期值可能确实是 0，请配合检查 `py_last_error/1`。
@@ -724,29 +724,29 @@ attr_demo :-
 #### `nn_load(+Name, +Path, +Options, -Handle)`
 从文件加载模型并注册为一个符号名称（Atom）。
 
-| 参数 | 类型 | 说明 |
-|---|---|---|
-| Name | 原子 | 该模型的标识符（比如 `my_model`） |
-| Path | 字符串 | 模型文件路径 |
-| Options | 列表 | `Key=Value` 的配置对（如 `[model_type=pytorch, device=cuda]`） |
+| 参数    | 类型   | 说明                                                           |
+| ------- | ------ | -------------------------------------------------------------- |
+| Name    | 原子   | 该模型的标识符（比如 `my_model`）                              |
+| Path    | 字符串 | 模型文件路径                                                   |
+| Options | 列表   | `Key=Value` 的配置对（如 `[model_type=pytorch, device=cuda]`） |
 
 **`nn_load` 常用选项：**
-| 选项 | 示例 | 说明 |
-|---|---|---|
-| `model_type` | `model_type=pytorch` | 框架：`pytorch`, `tensorflow`, `onnx` |
-| `device` | `device=cuda` | 计算设备：`cpu`, `cuda`, `cuda:0` |
-| `weights_only` | `weights_only=true` | PyTorch：仅加载权重（更安全） |
+| 选项           | 示例                 | 说明                                  |
+| -------------- | -------------------- | ------------------------------------- |
+| `model_type`   | `model_type=pytorch` | 框架：`pytorch`, `tensorflow`, `onnx` |
+| `device`       | `device=cuda`        | 计算设备：`cpu`, `cuda`, `cuda:0`     |
+| `weights_only` | `weights_only=true`  | PyTorch：仅加载权重（更安全）         |
 
 #### `nn_predict(+Name, +Input, -Output)`
 #### `nn_predict(+Name, +Input, -Output, +Options)`
 使用已加载的模型执行推理。
 
-| 参数 | 类型 | 说明 |
-|---|---|---|
-| Name | 原子 | 匹配所加载模型的标识符 |
-| Input | 句柄 | 输入数据的句柄（例如张量 Tensor） |
-| Output | 句柄 | 推理结果句柄 |
-| Options | 列表 | `Key=Value` 推理配置对 |
+| 参数    | 类型 | 说明                              |
+| ------- | ---- | --------------------------------- |
+| Name    | 原子 | 匹配所加载模型的标识符            |
+| Input   | 句柄 | 输入数据的句柄（例如张量 Tensor） |
+| Output  | 句柄 | 推理结果句柄                      |
+| Options | 列表 | `Key=Value` 推理配置对            |
 
 **示例：**
 ```prolog
@@ -777,20 +777,20 @@ neural_demo :-
 #### `llm_load(+Name, +ModelId, +Options, -Handle)`
 配置 LLM 提供商和模型。
 
-| 参数 | 类型 | 说明 |
-|---|---|---|
-| Name | 原子 | 标识符 |
-| ModelId | 字符串 | 模型 ID（如 `"gpt-4"`） |
-| Options | 列表 | 配置项（如 `provider=openai`） |
+| 参数    | 类型   | 说明                           |
+| ------- | ------ | ------------------------------ |
+| Name    | 原子   | 标识符                         |
+| ModelId | 字符串 | 模型 ID（如 `"gpt-4"`）        |
+| Options | 列表   | 配置项（如 `provider=openai`） |
 
 **`llm_load` 常用选项：**
-| 选项 | 示例 | 说明 |
-|---|---|---|
-| `provider` | `provider=openai` | LLM 提供商 |
-| `api_key` | `api_key="sk-..."` | API 密钥（字符串） |
-| `temperature` | `temperature=0.7` | 采样温度 |
-| `max_tokens` | `max_tokens=1024` | 最大生成 token 数 |
-| `base_url` | `base_url="http://..."` | 自定义端点 URL |
+| 选项          | 示例                    | 说明               |
+| ------------- | ----------------------- | ------------------ |
+| `provider`    | `provider=openai`       | LLM 提供商         |
+| `api_key`     | `api_key="sk-..."`      | API 密钥（字符串） |
+| `temperature` | `temperature=0.7`       | 采样温度           |
+| `max_tokens`  | `max_tokens=1024`       | 最大生成 token 数  |
+| `base_url`    | `base_url="http://..."` | 自定义端点 URL     |
 
 支持的提供商：`openai`, `anthropic`, `huggingface`, `ollama`, `custom`。
 
@@ -798,12 +798,12 @@ neural_demo :-
 #### `llm_generate(+Name, +Prompt, -Response, +Options)`
 根据提示词生成文本。
 
-| 参数 | 类型 | 说明 |
-|---|---|---|
-| Name | 原子 | 匹配已加载 LLM 的标识符 |
-| Prompt | 字符串 | 输入提示词 |
-| Response | 字符串 | 生成的文本响应 |
-| Options | 列表 | 生成参数 |
+| 参数     | 类型   | 说明                    |
+| -------- | ------ | ----------------------- |
+| Name     | 原子   | 匹配已加载 LLM 的标识符 |
+| Prompt   | 字符串 | 输入提示词              |
+| Response | 字符串 | 生成的文本响应          |
+| Options  | 列表   | 生成参数                |
 
 **示例：**
 ```prolog
@@ -834,86 +834,86 @@ llm_demo :-
 #### `rl_create(+Name, +EnvId, +Algorithm, +Options)`
 创建并注册新的 RL Agent。
 
-| 参数 | 类型 | 说明 |
-|---|---|---|
-| Name | 原子 | Agent 的符号标识符 |
-| EnvId | 字符串 | Gymnasium 环境 ID（如 `"CartPole-v1"`） |
-| Algorithm | 原子 | RL 算法：`dqn`, `ppo`, `a2c`, `sac`, `td3`, `ddpg`, `pg`, `discrete_sac` |
-| Options | 列表 | `Key=Value` 配置对 |
+| 参数      | 类型   | 说明                                                                     |
+| --------- | ------ | ------------------------------------------------------------------------ |
+| Name      | 原子   | Agent 的符号标识符                                                       |
+| EnvId     | 字符串 | Gymnasium 环境 ID（如 `"CartPole-v1"`）                                  |
+| Algorithm | 原子   | RL 算法：`dqn`, `ppo`, `a2c`, `sac`, `td3`, `ddpg`, `pg`, `discrete_sac` |
+| Options   | 列表   | `Key=Value` 配置对                                                       |
 
 **`rl_create` 常用选项：**
-| 选项 | 示例 | 说明 |
-|---|---|---|
-| `lr` | `lr=0.001` | 学习率 |
-| `gamma` | `gamma=0.99` | 折扣因子 |
-| `hidden_sizes` | `hidden_sizes=[64,64]` | MLP 隐藏层大小 |
-| `n_train_envs` | `n_train_envs=4` | 并行训练环境数量 |
-| `buffer_size` | `buffer_size=20000` | 回放缓冲区容量 |
-| `eps_training` | `eps_training=0.1` | 训练时的 Epsilon（DQN） |
+| 选项           | 示例                   | 说明                    |
+| -------------- | ---------------------- | ----------------------- |
+| `lr`           | `lr=0.001`             | 学习率                  |
+| `gamma`        | `gamma=0.99`           | 折扣因子                |
+| `hidden_sizes` | `hidden_sizes=[64,64]` | MLP 隐藏层大小          |
+| `n_train_envs` | `n_train_envs=4`       | 并行训练环境数量        |
+| `buffer_size`  | `buffer_size=20000`    | 回放缓冲区容量          |
+| `eps_training` | `eps_training=0.1`     | 训练时的 Epsilon（DQN） |
 
 #### `rl_load(+Name, +Path, +Options)`
 #### `rl_load(+Name, +Path, +Options, -Handle)`
 加载已保存的 RL Agent 检查点。
 
-| 参数 | 类型 | 说明 |
-|---|---|---|
-| Name | 原子 | 符号标识符 |
-| Path | 字符串 | 检查点文件路径 |
-| Options | 列表 | **必须**包含 `env_id`（字符串）和 `algorithm`（原子） |
+| 参数    | 类型   | 说明                                                  |
+| ------- | ------ | ----------------------------------------------------- |
+| Name    | 原子   | 符号标识符                                            |
+| Path    | 字符串 | 检查点文件路径                                        |
+| Options | 列表   | **必须**包含 `env_id`（字符串）和 `algorithm`（原子） |
 
 #### `rl_save(+Name, +Path)`
 将当前 Agent 策略保存到检查点文件。
 
-| 参数 | 类型 | 说明 |
-|---|---|---|
-| Name | 原子 | 已注册 Agent 的标识符 |
-| Path | 字符串 | 检查点输出路径 |
+| 参数 | 类型   | 说明                  |
+| ---- | ------ | --------------------- |
+| Name | 原子   | 已注册 Agent 的标识符 |
+| Path | 字符串 | 检查点输出路径        |
 
 #### `rl_action(+Name, +State, -Action)`
 #### `rl_action(+Name, +State, -Action, +Options)`
 根据观测查询 Agent 策略以获取动作。
 
-| 参数 | 类型 | 说明 |
-|---|---|---|
-| Name | 原子 | 已注册 Agent 的标识符 |
-| State | 句柄 | 观测张量的句柄 |
-| Action | 句柄 | 选定动作的句柄 |
+| 参数    | 类型 | 说明                      |
+| ------- | ---- | ------------------------- |
+| Name    | 原子 | 已注册 Agent 的标识符     |
+| State   | 句柄 | 观测张量的句柄            |
+| Action  | 句柄 | 选定动作的句柄            |
 | Options | 列表 | 如 `[deterministic=true]` |
 
 #### `rl_train(+Name, +Options)`
 #### `rl_train(+Name, +Options, -Metrics)`
 运行指定 Agent 的训练循环。
 
-| 参数 | 类型 | 说明 |
-|---|---|---|
-| Name | 原子 | 已注册 Agent 的标识符 |
-| Options | 列表 | 训练配置 |
-| Metrics | 句柄 | 训练指标字典的句柄 |
+| 参数    | 类型 | 说明                  |
+| ------- | ---- | --------------------- |
+| Name    | 原子 | 已注册 Agent 的标识符 |
+| Options | 列表 | 训练配置              |
+| Metrics | 句柄 | 训练指标字典的句柄    |
 
 **`rl_train` 常用选项：**
-| 选项 | 示例 | 说明 |
-|---|---|---|
-| `max_epochs` | `max_epochs=10` | 训练轮数 |
-| `epoch_num_steps` | `epoch_num_steps=5000` | 每轮步数 |
-| `batch_size` | `batch_size=64` | 更新的 mini-batch 大小 |
-| `test_step_num_episodes` | `test_step_num_episodes=5` | 每次测试阶段的回合数 |
+| 选项                     | 示例                       | 说明                   |
+| ------------------------ | -------------------------- | ---------------------- |
+| `max_epochs`             | `max_epochs=10`            | 训练轮数               |
+| `epoch_num_steps`        | `epoch_num_steps=5000`     | 每轮步数               |
+| `batch_size`             | `batch_size=64`            | 更新的 mini-batch 大小 |
+| `test_step_num_episodes` | `test_step_num_episodes=5` | 每次测试阶段的回合数   |
 
 #### `rl_evaluate(+Name, +NumEpisodes, -Metrics)`
 对 Agent 进行固定回合数的评估。
 
-| 参数 | 类型 | 说明 |
-|---|---|---|
-| Name | 原子 | 已注册 Agent 的标识符 |
-| NumEpisodes | 整数 | 评估回合数 |
-| Metrics | 句柄 | 评估指标字典的句柄 |
+| 参数        | 类型 | 说明                  |
+| ----------- | ---- | --------------------- |
+| Name        | 原子 | 已注册 Agent 的标识符 |
+| NumEpisodes | 整数 | 评估回合数            |
+| Metrics     | 句柄 | 评估指标字典的句柄    |
 
 #### `rl_info(+Name, -Info)`
 返回已注册 Agent 的元数据。
 
-| 参数 | 类型 | 说明 |
-|---|---|---|
+| 参数 | 类型 | 说明                  |
+| ---- | ---- | --------------------- |
 | Name | 原子 | 已注册 Agent 的标识符 |
-| Info | 句柄 | 信息字典的句柄 |
+| Info | 句柄 | 信息字典的句柄        |
 
 **示例：**
 ```prolog
@@ -1061,14 +1061,14 @@ numpy_demo :-
 
 ## 示例
 
-| 文件 | 说明 |
-|---|---|
-| `examples/basic.pl` | 算术运算、模块导入、集合操作、错误处理、RAII 自动清理 |
-| `examples/neural.pl` | MNIST 分类、神经符号加法、LLM 集成、强化学习 Agent |
-| `examples/numpy_torch.pl` | NumPy 向量/矩阵、PyTorch 张量、线性回归、CUDA GPU 矩阵乘法 |
-| `examples/mnist_cnn.pl` | 从零训练 CNN 识别 MNIST 手写数字 —— 模型定义、训练循环、评估、神经符号推理 |
+| 文件                       | 说明                                                                       |
+| -------------------------- | -------------------------------------------------------------------------- |
+| `examples/basic.pl`        | 算术运算、模块导入、集合操作、错误处理、RAII 自动清理                      |
+| `examples/neural.pl`       | MNIST 分类、神经符号加法、LLM 集成、强化学习 Agent                         |
+| `examples/numpy_torch.pl`  | NumPy 向量/矩阵、PyTorch 张量、线性回归、CUDA GPU 矩阵乘法                 |
+| `examples/mnist_cnn.pl`    | 从零训练 CNN 识别 MNIST 手写数字 —— 模型定义、训练循环、评估、神经符号推理 |
 | `examples/mnist_cnn_v2.pl` | **模块模式**（推荐）：同样的 CNN 训练，但 Python 代码放在独立 `.py` 文件中 |
-| `examples/rl_demo.pl` | DQN Agent 训练 CartPole-v1 —— 创建、训练、评估、保存、加载 |
+| `examples/rl_demo.pl`      | DQN Agent 训练 CartPole-v1 —— 创建、训练、评估、保存、加载                 |
 
 ```bash
 # 运行所有示例（通用命令，适用于所有系统）
@@ -1145,8 +1145,6 @@ ScryNeuro/
 ├── test_minimal_api.pl     # 3 项核心冒烟测试
 ├── test_rl.pl              # 17 项 RL 插件测试（scryer_rl.pl）
 ├── test_rl.py              # 15 项 Python RL 运行时测试（scryer_rl_runtime.py）
-└── docs/
-    └── technical_report.md # 详细中文技术报告
 ```
 
 ## 开源协议
