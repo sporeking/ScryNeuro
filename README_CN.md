@@ -125,11 +125,24 @@ cd ScryNeuro
 
 # 先激活 Python 环境！
 conda activate scryneuro  # 或：source .venv/bin/activate
+```
 
-# 编译
+使用项目提供的构建脚本，它会自动完成 `cargo build --release`、复制动态库，并导出 `PYLIB`、`LD_LIBRARY_PATH` / `DYLD_LIBRARY_PATH`、`SCRYNEURO_HOME` 等所需环境变量：
+
+```bash
+# Linux
+source build_linux.sh
+
+# macOS
+source build_macos.sh
+```
+
+> **为什么要用 `source`？** 使用 `source`（或 `. ./build_linux.sh`）执行脚本，导出的环境变量才会保留在**当前 Shell** 中。直接执行 `./build_linux.sh` 只会在一个立即退出的子 Shell 中设置它们，对当前终端没有效果。
+
+也可以手动执行以下步骤：
+
+```bash
 cargo build --release
-
-# 将共享库复制到项目根目录
 cp target/release/libscryneuro.so ./     # Linux
 # cp target/release/libscryneuro.dylib ./  # macOS
 ```

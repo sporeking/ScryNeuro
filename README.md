@@ -126,11 +126,24 @@ cd ScryNeuro
 
 # Activate your Python environment first!
 conda activate scryneuro  # or: source .venv/bin/activate
+```
 
-# Build
+Use the provided build script for your platform — it handles `cargo build --release`, copying the library to the project root, and exporting `PYLIB`, `LD_LIBRARY_PATH` / `DYLD_LIBRARY_PATH`, and `SCRYNEURO_HOME`:
+
+```bash
+# Linux
+source build_linux.sh
+
+# macOS
+source build_macos.sh
+```
+
+> **Why `source`?** Running with `source` (or `. ./build_linux.sh`) makes the exported variables persist in your **current shell**. Running as `./build_linux.sh` sets them only in a subshell that immediately exits.
+
+Alternatively, build manually:
+
+```bash
 cargo build --release
-
-# Copy the shared library to project root
 cp target/release/libscryneuro.so ./     # Linux
 # cp target/release/libscryneuro.dylib ./  # macOS
 ```
