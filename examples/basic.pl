@@ -15,6 +15,12 @@
 :- op(700, xfx, :=).
 :- use_module('../prolog/scryer_py').
 
+run_example(Name, Goal) :-
+    ( catch(Goal, E, (format("[ERROR] ~s failed: ~q~n", [Name, E]), fail)) ->
+        format("[OK] ~s~n", [Name])
+    ; true
+    ).
+
 %% ---------------------------------------------------------------------------
 %% Example 1: Basic arithmetic
 %% ---------------------------------------------------------------------------
@@ -153,15 +159,15 @@ example_raii :-
 %% ---------------------------------------------------------------------------
 
 :- initialization((
-    example_arithmetic,
+    run_example("example_arithmetic", example_arithmetic),
     nl,
-    example_modules,
+    run_example("example_modules", example_modules),
     nl,
-    example_collections,
+    run_example("example_collections", example_collections),
     nl,
-    example_errors,
+    run_example("example_errors", example_errors),
     nl,
-    example_raii,
+    run_example("example_raii", example_raii),
     nl,
     format("=== All basic examples complete ===~n", []),
     py_finalize

@@ -1,6 +1,7 @@
 %% Minimal smoke test for ScryNeuro
 %% use_foreign_module/2 is a runtime goal, not a directive.
 :- use_module(library(ffi)).
+:- use_module('../prolog/scryer_py').
 
 %% Detect library path: try .dylib (macOS) by checking file existence,
 %% fall back to .so (Linux).
@@ -9,6 +10,10 @@ lib_path(Path) :-
         Path = "./libscryneuro.dylib"
     ; catch((open('./libscryneuro.so', read, S), close(S)), _, fail) ->
         Path = "./libscryneuro.so"
+    ; catch((open('../libscryneuro.dylib', read, S), close(S)), _, fail) ->
+        Path = "../libscryneuro.dylib"
+    ; catch((open('../libscryneuro.so', read, S), close(S)), _, fail) ->
+        Path = "../libscryneuro.so"
     ; throw(error("Could not find libscryneuro.dylib or libscryneuro.so", lib_path/1))
     ).
 
@@ -31,7 +36,7 @@ test :-
     ( Status =:= 0 ->
         write('spy_init OK'), nl
     ; ffi:'spy_last_error'(Err),
-      write('spy_init FAILED: '), write(Err), nl,
+      print_py_error(error(python_error(Err), spy_init/0)),
       halt(1)
     ),
 
@@ -42,7 +47,7 @@ test :-
         write('1 + 2 = '), write(V), nl,
         ffi:'spy_drop'(H)
     ; ffi:'spy_last_error'(Err2),
-      write('spy_eval FAILED: '), write(Err2), nl
+      print_py_error(error(python_error(Err2), spy_eval/2))
     ),
 
     %% 3. Evaluate a string
@@ -52,7 +57,7 @@ test :-
         write('String: '), write(S), nl,
         ffi:'spy_drop'(H2)
     ; ffi:'spy_last_error'(Err3),
-      write('spy_eval str FAILED: '), write(Err3), nl
+      print_py_error(error(python_error(Err3), spy_eval/2))
     ),
 
     %% 4. Check handle count

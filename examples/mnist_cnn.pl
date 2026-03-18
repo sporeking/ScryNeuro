@@ -19,6 +19,12 @@
 :- op(700, xfx, :=).
 :- use_module('../prolog/scryer_py').
 
+run_example(Name, Goal) :-
+    ( catch(Goal, E, (format("[ERROR] ~s failed: ~q~n", [Name, E]), fail)) ->
+        format("[OK] ~s~n", [Name])
+    ; true
+    ).
+
 %% ---------------------------------------------------------------------------
 %% Step 1: Define the CNN model in Python
 %% ---------------------------------------------------------------------------
@@ -255,6 +261,6 @@ main :-
 
 :- initialization((
     py_init,
-    main,
+    run_example("main", main),
     py_finalize
 )).

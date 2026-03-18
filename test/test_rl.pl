@@ -2,11 +2,11 @@
 %% ScryNeuro RL Prolog Test Suite
 %% ===========================================================================
 %% Tests the rl_* predicates in scryer_rl.pl using Tianshou v2.0
-%% Run: LD_LIBRARY_PATH=. scryer-prolog test_rl.pl
+%% Run: LD_LIBRARY_PATH=. scryer-prolog test/test_rl.pl
 
 :- op(700, xfx, :=).
-:- use_module('prolog/scryer_py').
-:- use_module('prolog/scryer_rl').
+:- use_module('../prolog/scryer_py').
+:- use_module('../prolog/scryer_rl').
 :- use_module(library(format)).
 
 %% ---------------------------------------------------------------------------
@@ -196,7 +196,7 @@ cleanup :-
             format("~n=== ALL 15 RL PROLOG TESTS PASSED ===~n", [])
         ),
         Error,
-        format("~nTEST SUITE ERROR: ~w~n", [Error])
+        print_py_error(Error)
     ),
     py_finalize
 )).

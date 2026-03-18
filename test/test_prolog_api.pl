@@ -2,10 +2,10 @@
 %% ScryNeuro Prolog API Test Suite
 %% ===========================================================================
 %% Tests the scryer_py.pl module predicates
-%% Run: scryer-prolog test_prolog_api.pl
+%% Run: scryer-prolog test/test_prolog_api.pl
 
 :- op(700, xfx, :=).
-:- use_module('prolog/scryer_py').
+:- use_module('../prolog/scryer_py').
 :- use_module(library(format)).
 
 test_eval :-
@@ -213,8 +213,10 @@ test_from_to :-
 test_error_handling :-
     ( catch(
         py_eval("1/0", _),
-        error(python_error(_Err), _),
-        format("17. error handling: OK~n", [])
+        Error,
+        ( print_py_error(Error),
+          format("17. error handling: OK~n", [])
+        )
     ) -> true ; format("17. error handling: FAIL~n", []) ).
 
 test_with_py :-

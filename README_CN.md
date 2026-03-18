@@ -701,14 +701,14 @@ attr_demo :-
 | `py_from_str/2`   | Pl -> Py | 字符串 (字符列表)     | `str`       |
 
 > **避坑指南**：
-> - `py_to_int` 发生错误时会返回 `0`。如果预期值可能确实是 0，请配合检查 `py_last_error/1`。
+> - `py_to_int` / `py_to_float` 在转换失败时现在会直接抛出异常，请用 `catch/3` 捕获。
 > - `py_to_bool` 返回的是 Prolog 原子 `true` 和 `false`，而不是整数。
 > - `py_to_repr` 对于调试非常有用，它返回 Python 中 `repr()` 的输出（如字符串会带上引号 `'hello'`）。
 
 ### None
 处理 Python 中的 `None` 单例对象。
 - `py_none(-Handle)`：获取指向 `None` 的句柄。
-- `py_is_none(+Handle)`：检查给定句柄是否为 `None`，通常用于条件判断。
+- `py_is_none(+Handle)`：检查给定句柄是否为 `None`，通常用于条件判断。句柄无效时会抛异常。
 
 ### JSON 桥接 (JSON Bridge)
 在 Prolog 和 Python 之间交换复杂结构化数据的最稳妥方式。
@@ -723,7 +723,7 @@ attr_demo :-
 
 ### 内存管理
 用于管理句柄生命周期和诊断内存泄漏的工具。
-- `py_free(+Handle)`：释放句柄，将其从注册表中移除并减少引用计数。
+- `py_free(+Handle)`：释放句柄，将其从注册表中移除并减少引用计数。句柄无效时会抛异常。
 - `with_py(+Handle, +Goal)`：以 RAII 风格执行 `Goal`，完毕后自动释放 `Handle`。
 - `py_handle_count(-N)`：获取当前活跃的句柄数量。
 
@@ -1153,11 +1153,14 @@ ScryNeuro/
 │   ├── mnist_cnn_v2.pl     # CNN MNIST 训练流水线（模块模式）
 │   ├── mnist_cnn_module.py # mnist_cnn_v2.pl 的 Python 模块
 │   └── rl_demo.pl          # RL 示例：DQN on CartPole-v1
-├── test_comprehensive.pl   # 24 项底层 FFI 测试
-├── test_prolog_api.pl      # 19 项高层 API 测试
-├── test_minimal_api.pl     # 3 项核心冒烟测试
-├── test_rl.pl              # 17 项 RL 插件测试（scryer_rl.pl）
-├── test_rl.py              # 15 项 Python RL 运行时测试（scryer_rl_runtime.py）
+├── test/
+│   ├── test_comprehensive.pl   # 24 项底层 FFI 测试
+│   ├── test_prolog_api.pl      # 19 项高层 API 测试
+│   ├── test_minimal_api.pl     # 3 项核心冒烟测试
+│   ├── test_rl.pl              # 17 项 RL 插件测试（scryer_rl.pl）
+│   ├── test_rl.py              # 15 项 Python RL 运行时测试（scryer_rl_runtime.py）
+│   ├── test_smoke.pl           # 底层冒烟测试
+│   └── test_pi.pl              # 快速 pi/import 健康检查
 ```
 
 ## 开源协议

@@ -22,6 +22,12 @@
 :- op(700, xfx, :=).
 :- use_module('../prolog/scryer_py').
 
+run_example(Name, Goal) :-
+    ( catch(Goal, E, (format("[ERROR] ~s failed: ~q~n", [Name, E]), fail)) ->
+        format("[OK] ~s~n", [Name])
+    ; true
+    ).
+
 %% ---------------------------------------------------------------------------
 %% Helper: add examples/ to Python's module search path so that
 %% py_import("mnist_cnn_module") can find examples/mnist_cnn_module.py
@@ -219,6 +225,6 @@ main :-
 
 :- initialization((
     py_init,
-    main,
+    run_example("main", main),
     py_finalize
 )).

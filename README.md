@@ -434,12 +434,14 @@ The registry, managed by `src/registry.rs`, is a thread-safe (Mutex-protected) H
 - Once freed, a handle becomes invalid. Using a freed handle will result in an error.
 
 ### Error Handling and Sentinel Patterns
-The FFI layer uses three primary patterns to signal errors:
+At the Rust FFI level, three primary patterns are used:
 - **Handle functions**: Return `0` on error.
 - **Status functions**: Return `-1` on error, `0` on success.
 - **String functions**: Return an empty string `""` on error.
 
-The Prolog layer wraps these FFI calls with `check_handle/2` and `check_status/2`. These predicates retrieve the error message via `py_last_error/1` and throw a Prolog exception: `error(python_error(Msg), Context)`. 
+The Prolog layer now enforces strict error handling for all high-level conversion predicates: it clears stale thread-local errors before calls and throws `error(python_error(Msg), Context)` if any conversion/inspection call leaves an error.
+
+In practice, this means `py_to_int/2`, `py_to_float/2`, `py_to_str/2`, `py_to_repr/2`, `py_to_json/2`, `py_list_len/2`, `py_handle_count/1`, and `py_free/1` now throw on failure instead of exposing ambiguous sentinel values.
 
 Use `catch/3` to handle these errors gracefully:
 ```prolog
@@ -790,7 +792,7 @@ Extracts the integer value from a Python `int` object.
 | Handle | Handle | Python int object |
 | Value | Integer | The Prolog integer value |
 
-**Note**: Returns `0` on error. If the result could legitimately be 0, check `py_last_error/1` to distinguish.
+**Error behavior**: Throws `error(python_error(Msg), py_to_int/2)` on conversion failure.
 
 #### py_to_float(+Handle, -Value)
 Extracts the float value from a Python `float` object.
@@ -800,7 +802,7 @@ Extracts the float value from a Python `float` object.
 | Handle | Handle | Python float object |
 | Value | Float | The Prolog float value |
 
-**Note**: Returns `0.0` on error.
+**Error behavior**: Throws `error(python_error(Msg), py_to_float/2)` on conversion failure.
 
 #### py_to_bool(+Handle, -Value)
 Extracts a boolean value from a Python `bool` object.
@@ -847,8 +849,7 @@ Creates a Python `str` object from a Prolog string (char list).
 | Handle | Handle | Handle to the new Python str |
 
 **Pitfalls**:
-- `py_to_int` returns `0` on error and when the value is actually 0. Check `py_last_error/1` if the result is ambiguous.
-- `py_to_float` returns `0.0` on error.
+- `py_to_int` and `py_to_float` now throw on conversion errors; catch exceptions with `catch/3`.
 - `py_to_bool` returns Prolog atoms `true` and `false`, not integers.
 - `py_from_bool` expects atoms `true` or `false`.
 - `py_to_repr` is useful for debugging as it returns the output of Python's `repr()` function.
@@ -891,7 +892,7 @@ Handle Python's `None` singleton.
 Returns a handle to the Python `None` object.
 
 #### py_is_none(+Handle)
-Succeeds if the handle points to `None` and fails otherwise. Useful for conditional logic.
+Succeeds if the handle points to `None` and fails otherwise. Invalid handles now raise an exception.
 
 **Example:**
 ```prolog
@@ -961,7 +962,7 @@ Appends an item handle to a Python list. This operation mutates the list in-plac
 Retrieves the item at the specified 0-based index.
 
 #### py_list_len(+List, -Len)
-Returns the length of the list. Returns -1 if an error occurs.
+Returns the length of the list. Throws an exception on error.
 
 #### py_list_from_handles(+HandleList, -PyListHandle)
 Converts a Prolog list of handles into a Python list object.
@@ -1031,7 +1032,7 @@ collection_demo :-
 Tools for managing handle lifecycles and diagnosing leaks.
 
 #### py_free(+Handle)
-Releases a handle, removing it from the registry and decrementing the Python reference count.
+Releases a handle, removing it from the registry and decrementing the Python reference count. Throws on invalid handle.
 
 #### with_py(+Handle, +Goal)
 RAII-style wrapper. Executes `Goal` and ensures `Handle` is freed regardless of the outcome.
@@ -1066,15 +1067,15 @@ raii_demo :-
 ```prolog
 check_error_demo :-
     py_init,
-    py_eval("0", ZeroH),
-    py_to_int(ZeroH, Val),
-    %% Val is 0 — but is it a real 0 or an error?
-    py_last_error(Err),
-    ( Err = [] ->  %% empty string = no error
-        format("Real zero: ~d~n", [Val])
-    ;   format("Error occurred: ~s~n", [Err])
-    ),
-    py_free(ZeroH).
+    catch(
+        (
+            py_eval("int('bad')", H),
+            py_to_int(H, _),
+            py_free(H)
+        ),
+        error(python_error(Msg), _),
+        format("Conversion error: ~s~n", [Msg])
+    ).
 ```
 
 ### Neural Network Predicates
@@ -1608,11 +1609,14 @@ ScryNeuro/
 │   ├── mnist_cnn_v2.pl     # CNN MNIST training pipeline (module pattern)
 │   ├── mnist_cnn_module.py # Python module for mnist_cnn_v2.pl
 │   └── rl_demo.pl          # RL demo: DQN on CartPole-v1
-├── test_comprehensive.pl   # 24 low-level FFI tests
-├── test_prolog_api.pl      # 19 high-level API tests
-├── test_minimal_api.pl     # 3 core smoke tests
-├── test_rl.pl              # 17 RL plugin tests (scryer_rl.pl)
-├── test_rl.py              # 15 Python RL runtime tests (scryer_rl_runtime.py)
+├── test/
+│   ├── test_comprehensive.pl   # 24 low-level FFI tests
+│   ├── test_prolog_api.pl      # 19 high-level API tests
+│   ├── test_minimal_api.pl     # 3 core smoke tests
+│   ├── test_rl.pl              # 17 RL plugin tests (scryer_rl.pl)
+│   ├── test_rl.py              # 15 Python RL runtime tests (scryer_rl_runtime.py)
+│   ├── test_smoke.pl           # low-level smoke test
+│   └── test_pi.pl              # quick pi/import sanity test
 └── docs/
     └── technical_report.md # Detailed Chinese technical report
 ```

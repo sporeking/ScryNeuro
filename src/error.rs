@@ -5,7 +5,10 @@
 //!
 //! **Ownership rules:**
 //! - `spy_last_error()` returns a pointer owned by TLS — do NOT free it.
-//! - `spy_to_str()` / `spy_to_json()` etc. return leaked CStrings — MUST free with `spy_cstr_free()`.
+//! - `spy_to_str()` / `spy_to_json()` etc. also return TLS-backed pointers in this
+//!   codebase; callers must copy data before subsequent `spy_*` calls.
+//! - `spy_cstr_free()` remains exported for compatibility with externally allocated
+//!   C strings but should not be used on TLS-backed pointers.
 
 use std::cell::RefCell;
 use std::ffi::CString;
@@ -49,9 +52,10 @@ pub extern "C" fn spy_last_error_clear() {
     clear_last_error();
 }
 
-/// Free a CString that was returned by `spy_to_str`, `spy_to_json`, etc.
+/// Free an owned CString pointer allocated with `CString::into_raw`.
 ///
-/// Do NOT call this on pointers returned by `spy_last_error()`.
+/// Do NOT call this on pointers returned by TLS-backed APIs such as
+/// `spy_last_error()`, `spy_to_str()`, `spy_to_json()`, or `spy_to_repr()`.
 ///
 /// # Safety
 /// `ptr` must be a pointer previously returned by a `spy_*` function

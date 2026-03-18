@@ -5,6 +5,10 @@ lib_path(Path) :-
         Path = "./libscryneuro.dylib"
     ; catch((open('./libscryneuro.so', read, S), close(S)), _, fail) ->
         Path = "./libscryneuro.so"
+    ; catch((open('../libscryneuro.dylib', read, S), close(S)), _, fail) ->
+        Path = "../libscryneuro.dylib"
+    ; catch((open('../libscryneuro.so', read, S), close(S)), _, fail) ->
+        Path = "../libscryneuro.so"
     ; throw(error("Could not find libscryneuro.dylib or libscryneuro.so", lib_path/1))
     ).
 

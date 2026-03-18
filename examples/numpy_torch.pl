@@ -18,6 +18,12 @@
 :- op(700, xfx, :=).
 :- use_module('../prolog/scryer_py').
 
+run_example(Name, Goal) :-
+    ( catch(Goal, E, (format("[ERROR] ~s failed: ~q~n", [Name, E]), fail)) ->
+        format("[OK] ~s~n", [Name])
+    ; true
+    ).
+
 %% ---------------------------------------------------------------------------
 %% Example 1: NumPy - Vector Dot Product
 %% ---------------------------------------------------------------------------
@@ -176,10 +182,10 @@ example_cuda_matmul :-
 %% ---------------------------------------------------------------------------
 
 :- initialization((
-    example_numpy_dot,
-    example_torch_tensor,
-    example_torch_regression,
-    example_cuda_matmul,
+    run_example("example_numpy_dot", example_numpy_dot),
+    run_example("example_torch_tensor", example_torch_tensor),
+    run_example("example_torch_regression", example_torch_regression),
+    run_example("example_cuda_matmul", example_cuda_matmul),
     nl,
     format("=== numpy_torch examples all completed ===~n", []),
     py_finalize

@@ -1,5 +1,5 @@
 %% Minimal Prolog API test
-:- use_module('prolog/scryer_py').
+:- use_module('../prolog/scryer_py').
 
 test_eval :-
     py_eval("2 ** 10", H),

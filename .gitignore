@@ -2,6 +2,7 @@
 /data/
 /docs/
 /target/
+/checkpoints/
 *.pt
 /libscryneuro.so
 /libscryneuro.dylib

@@ -5,8 +5,7 @@ ScryNeuro RL Runtime Test Suite
 Tests the scryer_rl_runtime.py module directly (Python-level, no Rust FFI).
 Uses CartPole-v1 as a simple discrete environment.
 
-Run:  python test_rl.py          (from project root)
-      python python/test_rl.py   (alternative)
+Run:  python test/test_rl.py     (from project root)
 """
 
 from __future__ import annotations
@@ -16,8 +15,8 @@ import sys
 import tempfile
 import traceback
 
-# Ensure python/ is importable
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "python"))
+# Ensure project python/ is importable
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "python"))
 
 # ---------------------------------------------------------------------------
 # Helpers

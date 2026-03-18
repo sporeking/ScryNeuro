@@ -19,6 +19,12 @@
 :- use_module('../prolog/scryer_nn').
 :- use_module('../prolog/scryer_llm').
 
+run_example(Name, Goal) :-
+    ( catch(Goal, E, (format("[ERROR] ~s failed: ~q~n", [Name, E]), fail)) ->
+        format("[OK] ~s~n", [Name])
+    ; true
+    ).
+
 %% ===========================================================================
 %% Example 1: MNIST Digit Classification (Neural Predicate)
 %% ===========================================================================
@@ -231,11 +237,11 @@ demo_probabilistic :-
 
 :- initialization((
     py_init,
-    demo_mnist, nl,
-    demo_addition, nl,
-    demo_llm, nl,
-    demo_rl, nl,
-    demo_probabilistic, nl,
+    run_example("demo_mnist", demo_mnist), nl,
+    run_example("demo_addition", demo_addition), nl,
+    run_example("demo_llm", demo_llm), nl,
+    run_example("demo_rl", demo_rl), nl,
+    run_example("demo_probabilistic", demo_probabilistic), nl,
     format("=== All neural examples complete ===~n", []),
     py_finalize
 )).
