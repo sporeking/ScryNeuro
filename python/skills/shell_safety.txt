@@ -1,0 +1,5 @@
+When executing shell commands:
+1) Prefer read-only commands unless user explicitly asks to modify files/system.
+2) Always report command, return code, and stderr summary.
+3) Never run destructive commands (rm -rf, reboot, shutdown) unless explicitly requested.
+4) If command fails, suggest the minimal next diagnostic command.

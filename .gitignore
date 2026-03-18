@@ -3,6 +3,7 @@
 /docs/
 /target/
 /checkpoints/
+/reports/
 *.pt
 /libscryneuro.so
 /libscryneuro.dylib
@@ -15,6 +16,7 @@ __pycache__/
 *.pyc
 *.pyo
 .venv/
+.env
 
 # Tooling
 .ruff_cache/
