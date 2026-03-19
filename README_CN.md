@@ -39,6 +39,10 @@ NN、LLM 和 RL 功能以**可选插件**形式提供——各自为独立模块
 | **Python**        | 3.10 – 3.13   | 必须包含共享库（`libpython3.x.so` / `.dylib`） |
 | **Scryer Prolog** | 最新 git      | 须支持 `library(ffi)`                          |
 
+> 关于 Python 3.14+：当前 `pyo3 = 0.23.x` 默认可能拒绝 Python 3.14。项目构建脚本已在检测到 Python >= 3.14 时自动启用 `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1`。
+
+该兼容变量只在脚本的构建阶段使用，构建完成后会自动清理，不会污染后续正常运行命令。
+
 ### 第一步：安装 Rust
 
 ```bash
@@ -135,6 +139,12 @@ source build_linux.sh
 
 # macOS
 source build_macos.sh
+```
+
+如果你在某些环境中仍直接运行 `cargo build --release` 且 Python 为 3.14+，请手动加上：
+
+```bash
+PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo build --release
 ```
 
 > **为什么要用 `source`？** 使用 `source`（或 `. ./build_linux.sh`）执行脚本，导出的环境变量才会保留在**当前 Shell** 中。直接执行 `./build_linux.sh` 只会在一个立即退出的子 Shell 中设置它们，对当前终端没有效果。

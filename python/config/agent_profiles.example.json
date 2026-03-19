@@ -1,0 +1,22 @@
+{
+  "profiles": {
+    "default_openai": {
+      "provider": "openai",
+      "model": "auto",
+      "api_key": "",
+      "base_url": "",
+      "temperature": 0.0,
+      "max_tokens": 900
+    },
+    "glm_openai_compat": {
+      "provider": "openai",
+      "model": "glm-5",
+      "api_key": "",
+      "base_url": "https://open.bigmodel.cn/api/paas/v4"
+    },
+    "default_mock": {
+      "provider": "mock",
+      "model": "mock-v2"
+    }
+  }
+}

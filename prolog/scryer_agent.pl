@@ -13,6 +13,10 @@
 :- module(scryer_agent, [
     agent_create/3,
     agent_create/4,
+    agent_create_from_profile/2,
+    agent_create_from_profile/3,
+    agent_list_profiles/1,
+    agent_get_profile/2,
     agent_register_tool/3,
     agent_register_tool/4,
     agent_register_builtin_tools/2,
@@ -73,7 +77,49 @@ agent_create(Name, ModelId, Options, Handle) :-
     assertz(agent_registry(Name, Handle)),
     py_free(PyModelId),
     py_free(PyName),
+      py_free(Kwargs),
+      py_free(Runtime).
+
+%% agent_list_profiles(-ProfilesJson)
+agent_list_profiles(ProfilesJson) :-
+    py_import("scryer_agent_runtime", Runtime),
+    py_call(Runtime, "agent_list_profiles", ProfilesH),
+    py_to_json(ProfilesH, ProfilesJson),
+    py_free(ProfilesH),
+    py_free(Runtime).
+
+%% agent_get_profile(+ProfileName, -ProfileJson)
+agent_get_profile(ProfileName, ProfileJson) :-
+    py_import("scryer_agent_runtime", Runtime),
+    to_py_str(ProfileName, PyProfileName),
+    py_call(Runtime, "agent_get_profile", PyProfileName, ProfileH),
+    py_to_json(ProfileH, ProfileJson),
+    py_free(ProfileH),
+    py_free(PyProfileName),
+    py_free(Runtime).
+
+%% agent_create_from_profile(+Name, +ProfileName)
+agent_create_from_profile(Name, ProfileName) :-
+    agent_create_from_profile(Name, ProfileName, []).
+
+%% agent_create_from_profile(+Name, +ProfileName, +Options)
+%% Options override profile fields (e.g., [model="glm-5", base_url="..."]).
+agent_create_from_profile(Name, ProfileName, Options) :-
+    ( agent_registry(Name, _) ->
+        throw(error(agent_already_exists(Name), agent_create_from_profile/3))
+    ; true
+    ),
+    py_import("scryer_agent_runtime", Runtime),
+    atom_chars(Name, NameChars),
+    py_from_str(NameChars, PyName),
+    to_py_str(ProfileName, PyProfileName),
+    py_dict_new(Kwargs),
+    load_options(Kwargs, Options),
+    py_call(Runtime, "agent_create_from_profile", PyName, PyProfileName, Kwargs, Handle),
+    assertz(agent_registry(Name, Handle)),
     py_free(Kwargs),
+    py_free(PyProfileName),
+    py_free(PyName),
     py_free(Runtime).
 
 %% agent_register_tool(+AgentName, +ToolName, +Entrypoint)

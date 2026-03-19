@@ -105,11 +105,17 @@ fn init_python_runtime() {
         unsafe {
             use libc::{dlopen, RTLD_GLOBAL, RTLD_NOLOAD, RTLD_NOW};
             let candidates: &[&[u8]] = &[
-                b"libpython3.so\0",
+                b"libpython3.14.so.1.0\0",
+                b"libpython3.14.so\0",
+                b"libpython3.13.so.1.0\0",
                 b"libpython3.13.so\0",
+                b"libpython3.12.so.1.0\0",
                 b"libpython3.12.so\0",
+                b"libpython3.11.so.1.0\0",
                 b"libpython3.11.so\0",
+                b"libpython3.10.so.1.0\0",
                 b"libpython3.10.so\0",
+                b"libpython3.so\0",
             ];
             for name in candidates {
                 let ptr = dlopen(name.as_ptr() as *const i8, RTLD_NOW | RTLD_NOLOAD);

@@ -11,14 +11,22 @@ echo "Python LIBDIR: $PYLIB"
 
 # ── Verify libpython exists ────────────────────────────────────────
 PYVER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+PYMAJOR=$(python3 -c "import sys; print(sys.version_info.major)")
+PYMINOR=$(python3 -c "import sys; print(sys.version_info.minor)")
 if ! ls "$PYLIB"/libpython${PYVER}*.so* &>/dev/null; then
     echo "WARNING: libpython${PYVER}.so not found in $PYLIB" >&2
     echo "  Python may not have been built with --enable-shared" >&2
 fi
 
+if [ "$PYMAJOR" -eq 3 ] && [ "$PYMINOR" -ge 14 ]; then
+    export PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
+    echo "Detected Python ${PYVER}; enabling PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1"
+fi
+
 # ── Build ──────────────────────────────────────────────────────────
 echo "Building ScryNeuro (release)..."
 cargo build --release
+unset PYO3_USE_ABI3_FORWARD_COMPATIBILITY || true
 
 # ── Copy dynamic library to project root ───────────────────────────
 cp target/release/libscryneuro.so ./
@@ -34,6 +42,9 @@ echo "Build complete. Environment:"
 echo "  PYLIB=$PYLIB"
 echo "  LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
 echo "  SCRYNEURO_HOME=$SCRYNEURO_HOME"
+if [ "${PYO3_USE_ABI3_FORWARD_COMPATIBILITY:-}" = "1" ]; then
+    echo "  PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1"
+fi
 echo ""
 echo "To use in current shell, run:  source build_linux.sh"
 echo "To run an example:  scryer-prolog examples/basic.pl"

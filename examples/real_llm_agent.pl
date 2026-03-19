@@ -1,102 +1,76 @@
 %% ===========================================================================
-%% ScryNeuro Real LLM Agent Example (OpenAI-compatible)
+%% ScryNeuro Real LLM Agent Example (User-Facing API)
 %% ===========================================================================
 %%
-%% Runs against OpenAI-compatible APIs (OpenAI / compatible proxies / local servers).
-%% Demonstrates real tools + skills + markdown artifact output.
-%% Required configuration:
-%%   - OPENAI_API_KEY provided either by shell env OR project .env
-%% Optional:
-%%   - OPENAI_MODEL      (default: from .env/env if model arg is auto)
-%%   - OPENAI_BASE_URL   (default: provider default; can come from env or .env)
+%% User-visible flow:
+%%   1) Discover providers/models/tools/skills
+%%   2) Create agent with chosen model
+%%   3) Enable tools and skills
+%%   4) Run concise task loop
 %%
 %% Run:
 %%   LD_LIBRARY_PATH=. scryer-prolog examples/real_llm_agent.pl
 
 :- op(700, xfx, :=).
 :- use_module('../prolog/scryer_py').
-:- use_module('../prolog/scryer_agent').
-:- use_module(library(lists)).
-:- use_module(library(os)).
+:- use_module('../prolog/scryer_agent_api').
 
 run_example(Name, Goal) :-
     catch(Goal, E, (format("[ERROR] ~s failed:~n", [Name]), print_py_error(E), fail)),
     format("[OK] ~s~n", [Name]).
 
-contains_chars(Haystack, Needle) :-
-    append(_, Rest, Haystack),
-    append(Needle, _, Rest), !.
-
-assert_contains(Haystack, Needle, Context) :-
-    ( contains_chars(Haystack, Needle) -> true
-    ; throw(error(assertion_failed(Context), assert_contains/3))
-    ).
-
-optional_getenv(Key, Default, Value) :-
-    ( catch(getenv(Key, V), _, fail) -> Value = V
-    ; Value = Default
-    ).
-
-test_real_llm_agent :-
-    optional_getenv("OPENAI_MODEL", "auto", Model),
-    optional_getenv("OPENAI_BASE_URL", "", BaseUrl),
-
-    %% Skill system preflight (nanobot-style catalog discovery)
-    agent_discover_skills(Discovered, [skills_dir="python/skills"]),
-    format("Discovered skills: ~s~n", [Discovered]),
-    assert_contains(Discovered, "\"name\": \"research-web-markdown\"", discovered_research_skill),
-    assert_contains(Discovered, "\"name\": \"shell-safety-exec\"", discovered_shell_skill),
-
-    ( BaseUrl = [] ->
-        agent_create(openai_agent, Model, [provider=openai])
-    ; agent_create(openai_agent, Model, [provider=openai, base_url=BaseUrl])
+setup_and_run_real_agent :-
+    py_eval("__import__('importlib.util', fromlist=['util']).find_spec('openai') is not None", OpenAIInstalledH),
+    py_to_bool(OpenAIInstalledH, HasOpenAI),
+    py_free(OpenAIInstalledH),
+    ( HasOpenAI == true -> true
+    ; throw(error(missing_python_dependency('openai', 'pip install openai'), setup_and_run_real_agent/0))
     ),
 
-    agent_register_builtin_tools(openai_agent, [web_fetch, shell_exec, read_file, write_file, list_dir, grep_text]),
-    agent_load_skill(openai_agent, 'research-web-markdown', [skills_dir="python/skills"]),
-    agent_load_skill(openai_agent, 'shell-safety-exec', [skills_dir="python/skills"]),
-    agent_set_skill_policy(openai_agent, [mode=hybrid, max_skills=2, min_score=1, skill_total_budget_chars=1800, skill_max_chars_each=900]),
-    agent_list_skills(openai_agent, SkillsBefore),
-    format("Loaded skills catalog: ~s~n", [SkillsBefore]),
-    assert_contains(SkillsBefore, "\"name\": \"research-web-markdown\"", loaded_research_skill),
-    assert_contains(SkillsBefore, "\"name\": \"shell-safety-exec\"", loaded_shell_skill),
-    assert_contains(SkillsBefore, "\"active\": true", skills_initially_active),
+    agent_providers(Providers),
+    format("Providers: ~w~n", [Providers]),
 
-    %% Verify enable/disable path works
-    agent_disable_skill(openai_agent, 'shell-safety-exec'),
-    agent_list_skills(openai_agent, SkillsDisabled),
-    format("Skills after disable: ~s~n", [SkillsDisabled]),
-    assert_contains(SkillsDisabled, "\"active\": false", disable_skill_effect),
-    agent_enable_skill(openai_agent, 'shell-safety-exec'),
-    agent_list_skills(openai_agent, SkillsEnabled),
-    format("Skills after re-enable: ~s~n", [SkillsEnabled]),
-    assert_contains(SkillsEnabled, "\"active\": true", enable_skill_effect),
+    agent_profiles(Profiles),
+    format("Profiles: ~s~n", [Profiles]),
 
-    Prompt = "You are a research agent. Use tools to fetch one public web page related to AI/news, then write a concise markdown report to reports/latest_news.md with sections: Title, Sources, Summary, Key Points (3 bullets). Return a brief final message mentioning the file path.",
-    agent_run(openai_agent, Prompt, Out, [max_steps=5, max_auto_tools=4, temperature=0.0, max_tokens=800]),
-    format("Real LLM run output: ~s~n", [Out]),
+    agent_profile("default", DefaultProfile),
+    format("default_openai profile: ~s~n", [DefaultProfile]),
 
-    agent_step(openai_agent, "tool:read_file {\"path\": \"reports/latest_news.md\"}", MarkdownOut, [max_auto_tools=3]),
-    format("Generated markdown preview: ~s~n", [MarkdownOut]),
+    agent_models(openai, OpenAIModels),
+    format("OpenAI models: ~w~n", [OpenAIModels]),
 
-    agent_step(openai_agent, "tool:web_fetch {\"url\": \"https://news.ycombinator.com\", \"timeout\": 15}", FetchOut, [max_auto_tools=3]),
-    format("Web fetch output: ~s~n", [FetchOut]),
+    agent_tools(ToolsJson),
+    format("Available tools: ~s~n", [ToolsJson]),
 
-    agent_step(openai_agent, "tool:write_file {\"path\": \"reports/news_snapshot.md\", \"content\": \"# News Snapshot\\n\\nGenerated by agent.\"}", WriteOut, [max_auto_tools=3]),
-    format("Write markdown output: ~s~n", [WriteOut]),
+    agent_skills(SkillsJson),
+    format("Available skills: ~s~n", [SkillsJson]),
 
-    agent_trace(openai_agent, Trace),
-    format("OpenAI trace: ~s~n", [Trace]),
-    assert_contains(Trace, "\"type\": \"skills_selected\"", trace_has_skills_selected),
-    assert_contains(Trace, "\"skills_budget\": 1800", trace_has_budget_event),
+    agent_new_from_profile(research_agent, "default", [
+        enable_experiment_log=true,
+        experiment_log_dir="logs",
+        experiment_run_id="real_llm_agent_demo"
+    ]),
+    agent_enable_tools(research_agent, [web_fetch, read_file, write_file, shell_exec, list_dir, grep_text]),
+    agent_enable_skills(research_agent, ['research-web-markdown', 'shell-safety-exec']),
 
-    agent_unload(openai_agent).
+    Task = "Gather one AI-related web source and produce a concise markdown report at reports/latest_news.md.",
+    agent_run(research_agent, Task, Out),
+    format("Agent output: ~s~n", [Out]),
+
+    agent_trace(research_agent, Trace),
+    format("Agent trace: ~s~n", [Trace]),
+
+    agent_close(research_agent).
 
 :- initialization((
     py_init,
-    ( catch(run_example("test_real_llm_agent", test_real_llm_agent), Error, (print_py_error(Error), fail)) ->
-        format("=== Real LLM agent example passed ===~n", [])
-    ; format("=== Real LLM agent example failed ===~n", [])
+    ( catch(
+          setup_and_run_real_agent,
+          error(missing_python_dependency(Dep, InstallHint), _),
+          ( format("[SKIP] Missing Python dependency '~w'. Install with: ~w~n", [Dep, InstallHint]), true )
+      ) ->
+        format("=== Real LLM user-facing example passed ===~n", [])
+    ; format("=== Real LLM user-facing example failed ===~n", [])
     ),
     py_finalize
 )).

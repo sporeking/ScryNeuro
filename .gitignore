@@ -17,6 +17,9 @@ __pycache__/
 *.pyo
 .venv/
 .env
+/logs
+python/config/agent_profiles.local.json
+python/config/agent_profiles.json
 
 # Tooling
 .ruff_cache/

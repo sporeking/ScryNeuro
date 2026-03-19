@@ -28,6 +28,24 @@ NN, LLM, and RL functionality are **opt-in plugins** — separate modules loaded
 
 Each plugin has a matching Python runtime module (`python/scryer_*_runtime.py`) that is loaded lazily on first use.
 
+### Agent Profile Configuration (Provider/Base URL/API/Model)
+
+The agent subsystem reads profile configuration from JSON:
+
+- Default file: `python/config/agent_profiles.json`
+- Override with env: `SCRYNEURO_AGENT_CONFIG=/abs/path/to/agent_profiles.json`
+- Optional local override file: `<config>.local.json`
+  - Example: `python/config/agent_profiles.local.json`
+
+When a local override exists, it is deep-merged into the base config (nested objects are merged; scalar values are overridden).
+
+Runtime precedence for effective settings is:
+
+1. Explicit options passed at agent creation call (highest priority)
+2. Profile fields from config file(s)
+3. Environment / `.env` fallback (for OpenAI: `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL` when model is `auto`)
+4. Hard defaults (`provider=openai`, `model=auto`, then `OPENAI_MODEL` fallback to `gpt-4o-mini`)
+
 ---
 
 ## Installation
@@ -39,6 +57,10 @@ Each plugin has a matching Python runtime module (`python/scryer_*_runtime.py`) 
 | **Rust** | stable ≥ 1.70 | `rustup` recommended |
 | **Python** | 3.10 – 3.13 | with shared library (`libpython3.x.so` / `.dylib`) |
 | **Scryer Prolog** | latest git | must support `library(ffi)` |
+
+> Note on Python 3.14+: current `pyo3 = 0.23.x` may reject Python 3.14 by default. Our build scripts now auto-enable `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` when Python >= 3.14 is detected.
+
+The compatibility flag is only used for the build process in the script and is unset afterward, so it does not leak into normal runtime commands.
 
 ### Step 1: Install Rust
 
@@ -136,6 +158,12 @@ source build_linux.sh
 
 # macOS
 source build_macos.sh
+```
+
+If your shell/environment still invokes `cargo build --release` directly with Python 3.14+, set:
+
+```bash
+PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo build --release
 ```
 
 > **Why `source`?** Running with `source` (or `. ./build_linux.sh`) makes the exported variables persist in your **current shell**. Running as `./build_linux.sh` sets them only in a subshell that immediately exits.

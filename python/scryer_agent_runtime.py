@@ -6,15 +6,43 @@ import logging
 import os
 import pathlib
 import re
+import secrets
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
 from scryer_llm_runtime import _llm_manager
+from scryer_tool_runtime import _tool_registry
+from scryer_agent_config import get_profile, list_profiles, resolve_profile
 
 logger = logging.getLogger("scryneuro.agent")
 
 _DOTENV_LOADED = False
+
+
+@dataclass
+class ExperimentLogger:
+    schema_version: str
+    run_id: str
+    file_path: pathlib.Path
+    enabled: bool = True
+    seq: int = 0
+
+    def write(self, event: str, payload: dict[str, Any]) -> None:
+        if not self.enabled:
+            return
+        self.seq += 1
+        record = {
+            "schema_version": self.schema_version,
+            "run_id": self.run_id,
+            "seq": self.seq,
+            "ts": time.time(),
+            "event": event,
+            "payload": payload,
+        }
+        self.file_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.file_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
 def _iter_dotenv_candidates() -> list[pathlib.Path]:
@@ -196,6 +224,32 @@ def _resolve_model_id(provider: str, model_id: str) -> str:
     return raw
 
 
+def _build_experiment_logger(
+    name: str, kwargs: dict[str, Any]
+) -> Optional[ExperimentLogger]:
+    enabled_raw = kwargs.get("enable_experiment_log", False)
+    if isinstance(enabled_raw, str):
+        enabled = enabled_raw.lower() in ("1", "true", "yes", "on")
+    else:
+        enabled = bool(enabled_raw)
+    if not enabled:
+        return None
+
+    run_id = str(kwargs.get("experiment_run_id", "")).strip()
+    if not run_id:
+        run_id = f"run_{int(time.time() * 1000)}_{secrets.token_hex(4)}"
+
+    log_dir = str(kwargs.get("experiment_log_dir", "logs")).strip() or "logs"
+    file_name = f"agent_{run_id}.jsonl"
+    file_path = pathlib.Path(log_dir) / file_name
+    return ExperimentLogger(
+        schema_version="1.0",
+        run_id=run_id,
+        file_path=file_path,
+        enabled=True,
+    )
+
+
 @dataclass
 class ToolSpec:
     name: str
@@ -228,6 +282,7 @@ class AgentState:
     trace: list[dict[str, Any]] = field(default_factory=list)
     plugins: list[dict[str, Any]] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
+    experiment_logger: Optional[ExperimentLogger] = None
 
 
 class AgentManager:
@@ -260,6 +315,7 @@ class AgentManager:
                 )
 
         resolved_model_id = _resolve_model_id(provider, model_id)
+        experiment_logger = _build_experiment_logger(name, kwargs)
 
         llm_entry: Any
         if provider == "mock":
@@ -278,6 +334,7 @@ class AgentManager:
             provider=provider,
             llm_entry=llm_entry,
             metadata=dict(kwargs),
+            experiment_logger=experiment_logger,
         )
         self._agents[name] = state
         self._emit(state, "agent_created", {"provider": provider, "model_id": model_id})
@@ -309,18 +366,21 @@ class AgentManager:
         entrypoint: str,
         **kwargs: Any,
     ) -> dict[str, Any]:
-        fn = _load_entrypoint(entrypoint)
-        description = str(kwargs.get("description", "")).strip()
-        if not description:
-            description = _extract_doc(fn)
+        description = str(kwargs.pop("description", "")).strip()
+        entry = _tool_registry.register(
+            tool_name,
+            entrypoint,
+            description=description,
+            **kwargs,
+        )
         spec = ToolSpec(
-            name=tool_name,
-            entrypoint=entrypoint,
-            fn=fn,
+            name=entry.name,
+            entrypoint=entry.entrypoint,
+            fn=entry.fn,
             metadata=dict(kwargs),
         )
         state.tools[tool_name] = spec
-        state.tool_docs[tool_name] = description
+        state.tool_docs[tool_name] = entry.description
         self._emit(
             state,
             "tool_registered",
@@ -332,8 +392,8 @@ class AgentManager:
         return {
             "ok": True,
             "tool": tool_name,
-            "entrypoint": entrypoint,
-            "description": description,
+            "entrypoint": entry.entrypoint,
+            "description": entry.description,
         }
 
     def register_builtin_tools(
@@ -341,35 +401,21 @@ class AgentManager:
         state: AgentState,
         names: list[str],
     ) -> dict[str, Any]:
-        imported = importlib.import_module("scryer_agent_tools")
-        mapping = {
-            "web_fetch": "tool_web_fetch",
-            "shell_exec": "tool_shell_exec",
-            "read_file": "tool_read_file",
-            "write_file": "tool_write_file",
-            "list_dir": "tool_list_dir",
-            "grep_text": "tool_grep_text",
-            "add": "add_numbers",
-            "multiply": "multiply_numbers",
-            "reverse": "reverse_text",
-        }
-
-        added: list[str] = []
-        for name in names:
-            if name not in mapping:
-                raise ValueError(f"Unknown built-in tool '{name}'")
-            fn_name = mapping[name]
-            fn = getattr(imported, fn_name)
-            entrypoint = f"scryer_agent_tools:{fn_name}"
-            description = _extract_doc(fn)
+        added = _tool_registry.register_builtin(names)
+        for name in added:
+            entry = _tool_registry.get(name)
             spec = ToolSpec(
-                name=name, entrypoint=entrypoint, fn=fn, metadata={"builtin": True}
+                name=entry.name,
+                entrypoint=entry.entrypoint,
+                fn=entry.fn,
+                metadata=dict(entry.metadata),
             )
             state.tools[name] = spec
-            state.tool_docs[name] = description
-            added.append(name)
+            state.tool_docs[name] = entry.description
             self._emit(
-                state, "tool_registered", {"tool": name, "entrypoint": entrypoint}
+                state,
+                "tool_registered",
+                {"tool": name, "entrypoint": entry.entrypoint},
             )
         return {"ok": True, "added": added}
 
@@ -776,22 +822,53 @@ class AgentManager:
         max_steps: int = 5,
         **kwargs: Any,
     ) -> dict[str, Any]:
+        self._log_event(
+            state,
+            "run_start",
+            {
+                "agent_name": state.name,
+                "provider": state.provider,
+                "model_id": state.model_id,
+                "user_input": user_input,
+                "options": kwargs,
+            },
+        )
         all_steps: list[dict[str, Any]] = []
         latest = ""
         for _ in range(max_steps):
             out = self.step(state, user_input, **kwargs)
             all_steps.append(out)
             latest = str(out.get("response", ""))
-            return {
+            final = {
                 "done": True,
                 "response": latest,
                 "steps": all_steps,
             }
-        return {
+            self._log_event(
+                state,
+                "run_end",
+                {
+                    "done": bool(final.get("done", False)),
+                    "response": str(final.get("response", "")),
+                    "steps_count": len(all_steps),
+                },
+            )
+            return final
+        final = {
             "done": False,
             "response": "Max run steps reached",
             "steps": all_steps,
         }
+        self._log_event(
+            state,
+            "run_end",
+            {
+                "done": bool(final.get("done", False)),
+                "response": str(final.get("response", "")),
+                "steps_count": len(all_steps),
+            },
+        )
+        return final
 
     def trace(self, state: AgentState) -> list[dict[str, Any]]:
         return list(state.trace)
@@ -1086,6 +1163,13 @@ class AgentManager:
         return value
 
     @staticmethod
+    def _log_event(state: AgentState, event: str, payload: dict[str, Any]) -> None:
+        logger_inst = state.experiment_logger
+        if logger_inst is None:
+            return
+        logger_inst.write(event, payload)
+
+    @staticmethod
     def _emit(state: AgentState, event_type: str, payload: dict[str, Any]) -> None:
         state.trace.append(
             {
@@ -1094,14 +1178,11 @@ class AgentManager:
                 **payload,
             }
         )
-
-
-def _extract_doc(fn: Callable[..., Any]) -> str:
-    raw = (fn.__doc__ or "").strip()
-    if not raw:
-        return ""
-    first = raw.splitlines()[0].strip()
-    return first
+        AgentManager._log_event(
+            state,
+            event_type,
+            payload,
+        )
 
 
 def _extract_action_json(text: str) -> dict[str, Any]:
@@ -1130,10 +1211,6 @@ def _extract_action_json(text: str) -> dict[str, Any]:
     }
 
 
-def _elapsed_ms(start_ts: float) -> int:
-    return int((time.time() - start_ts) * 1000)
-
-
 def _load_entrypoint(entrypoint: str) -> Callable[..., Any]:
     if ":" not in entrypoint:
         raise ValueError(
@@ -1147,6 +1224,10 @@ def _load_entrypoint(entrypoint: str) -> Callable[..., Any]:
     return fn
 
 
+def _elapsed_ms(start_ts: float) -> int:
+    return int((time.time() - start_ts) * 1000)
+
+
 _agent_manager = AgentManager()
 
 
@@ -1155,6 +1236,29 @@ def agent_create(name: str, model_id: str, kwargs: Optional[dict] = None) -> Any
         kwargs = {}
     provider = kwargs.pop("provider", "mock")
     return _agent_manager.create(name, model_id, provider=provider, **kwargs)
+
+
+def agent_list_profiles() -> list[dict[str, Any]]:
+    return list_profiles()
+
+
+def agent_get_profile(profile_name: str) -> dict[str, Any]:
+    return get_profile(profile_name)
+
+
+def agent_create_from_profile(
+    name: str,
+    profile_name: str,
+    kwargs: Optional[dict] = None,
+) -> Any:
+    if kwargs is None:
+        kwargs = {}
+    merged = resolve_profile(profile_name, kwargs)
+    merged.pop("name", None)
+    provider = str(merged.pop("provider", "openai"))
+    model_id = str(merged.pop("model", "auto"))
+    merged.pop("profile", None)
+    return _agent_manager.create(name, model_id, provider=provider, **merged)
 
 
 def agent_register_tool(

@@ -10,7 +10,7 @@ test_mock_agent :-
     agent_discover_skills(Discovered, [skills_dir="python/skills"]),
     format("Discovered skills: ~s~n", [Discovered]),
 
-    agent_create(mock_agent, "mock-v2", [provider=mock]),
+    agent_create(mock_agent, "mock-v2", [provider=mock, enable_experiment_log=true, experiment_log_dir="logs", experiment_run_id="test_agent_mock_run"]),
     agent_register_builtin_tools(mock_agent, [add, list_dir, shell_exec]),
     agent_load_skill(mock_agent, 'shell-safety-exec', [skills_dir="python/skills"]),
     agent_load_plugin(mock_agent, 'scryer_agent_plugins:memory_compress_plugin', [max_messages=12, keep_tail=6]),

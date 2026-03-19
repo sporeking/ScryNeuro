@@ -16,6 +16,7 @@ Usage from Prolog (via scryer_llm.pl):
 from __future__ import annotations
 
 import logging
+import importlib
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -148,7 +149,13 @@ class LLMManager:
 
     @staticmethod
     def _init_openai(model_id: str, **kwargs: Any) -> Any:
-        from openai import OpenAI
+        try:
+            from openai import OpenAI
+        except ModuleNotFoundError as e:
+            raise RuntimeError(
+                "OpenAI provider requires Python package 'openai'. "
+                "Install it with: pip install openai"
+            ) from e
 
         api_key = kwargs.get("api_key")
         base_url = kwargs.get("base_url")
@@ -156,14 +163,28 @@ class LLMManager:
 
     @staticmethod
     def _init_anthropic(model_id: str, **kwargs: Any) -> Any:
-        from anthropic import Anthropic
+        try:
+            anthropic_mod = importlib.import_module("anthropic")
+            Anthropic = getattr(anthropic_mod, "Anthropic")
+        except ModuleNotFoundError as e:
+            raise RuntimeError(
+                "Anthropic provider requires Python package 'anthropic'. "
+                "Install it with: pip install anthropic"
+            ) from e
 
         api_key = kwargs.get("api_key")
         return Anthropic(api_key=api_key)
 
     @staticmethod
     def _init_huggingface(model_id: str, **kwargs: Any) -> Any:
-        from transformers import pipeline
+        try:
+            transformers_mod = importlib.import_module("transformers")
+            pipeline = getattr(transformers_mod, "pipeline")
+        except ModuleNotFoundError as e:
+            raise RuntimeError(
+                "HuggingFace provider requires Python package 'transformers'. "
+                "Install it with: pip install transformers"
+            ) from e
 
         task = kwargs.get("task", "text-generation")
         device = get_device(kwargs.get("device", "auto"))
