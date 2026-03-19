@@ -4,7 +4,7 @@
 %%
 %% Demonstrates a practical, extensible agent setup:
 %%   - Built-in tools registration (web_fetch/shell/read/write/list/grep)
-%%   - Skills loading from ./python/skills
+%%   - Skills loading from Anthropic-style directories under ./python/skills
 %%   - Behavior plugin loading (memory compression hook)
 %%   - Real step/run execution in mock mode (offline deterministic)
 %%
@@ -28,8 +28,8 @@ demo_setup_agent :-
         practical_agent,
         [web_fetch, shell_exec, read_file, write_file, list_dir, grep_text, add, multiply, reverse]
     ),
-    agent_load_skill(practical_agent, research, [skills_dir="python/skills"]),
-    agent_load_skill(practical_agent, shell_safety, [skills_dir="python/skills"]),
+    agent_load_skill(practical_agent, 'research-web-markdown', [skills_dir="python/skills"]),
+    agent_load_skill(practical_agent, 'shell-safety-exec', [skills_dir="python/skills"]),
     agent_load_plugin(practical_agent, 'scryer_agent_plugins:memory_compress_plugin', [max_messages=10, keep_tail=6]),
     agent_list(Agents),
     format("Agents: ~s~n", [Agents]).

@@ -1,5 +1,0 @@
-When the user asks for factual or web-backed information:
-1) Prefer web_fetch tool first.
-2) Summarize findings with source URL in answer.
-3) If web_fetch fails, explain failure and provide partial answer from available context.
-4) Keep final answer concise and actionable.

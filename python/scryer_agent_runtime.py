@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import pathlib
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
@@ -99,6 +100,93 @@ def _validate_tool_io_schema(
     return True, ""
 
 
+def _parse_skill_markdown(path: pathlib.Path) -> dict[str, Any]:
+    raw = path.read_text(encoding="utf-8")
+    lines = raw.splitlines()
+    if not lines or lines[0].strip() != "---":
+        raise ValueError(f"Skill file missing YAML frontmatter: {path}")
+
+    frontmatter: dict[str, str] = {}
+    i = 1
+    while i < len(lines):
+        line = lines[i].strip()
+        if line == "---":
+            i += 1
+            break
+        if line and ":" in line:
+            key, value = line.split(":", 1)
+            frontmatter[key.strip()] = value.strip().strip('"').strip("'")
+        i += 1
+
+    name = frontmatter.get("name", "").strip()
+    description = frontmatter.get("description", "").strip()
+    if not name:
+        raise ValueError(f"Skill frontmatter missing required field 'name': {path}")
+    if not description:
+        raise ValueError(
+            f"Skill frontmatter missing required field 'description': {path}"
+        )
+
+    body = "\n".join(lines[i:]).strip()
+
+    def parse_list_field(key: str) -> list[str]:
+        raw_v = frontmatter.get(key, "").strip()
+        if not raw_v:
+            return []
+        if raw_v.startswith("[") and raw_v.endswith("]"):
+            raw_v = raw_v[1:-1]
+        parts = [p.strip().strip('"').strip("'") for p in raw_v.split(",")]
+        return [p for p in parts if p]
+
+    triggers = parse_list_field("triggers")
+    requires_tools = parse_list_field("requires_tools")
+    category = frontmatter.get("category", "").strip()
+    priority_raw = frontmatter.get("priority", "0").strip()
+    max_chars_raw = frontmatter.get("max_injection_chars", "").strip()
+    try:
+        priority = int(priority_raw)
+    except ValueError:
+        priority = 0
+    try:
+        max_injection_chars = int(max_chars_raw) if max_chars_raw else None
+    except ValueError:
+        max_injection_chars = None
+
+    return {
+        "name": name,
+        "description": description,
+        "body": body,
+        "path": str(path.resolve()),
+        "metadata": frontmatter,
+        "triggers": triggers,
+        "requires_tools": requires_tools,
+        "category": category,
+        "priority": priority,
+        "max_injection_chars": max_injection_chars,
+    }
+
+
+def _tokenize_for_match(text: str) -> list[str]:
+    return re.findall(r"[a-z0-9\-]+", text.lower())
+
+
+def _skill_match_score(skill: dict[str, Any], user_input: str) -> int:
+    haystack = f"{skill.get('name', '')} {skill.get('description', '')}"
+    hay_tokens = set(_tokenize_for_match(haystack))
+    in_tokens = set(_tokenize_for_match(user_input))
+    overlap = len(hay_tokens & in_tokens)
+    trigger_hits = 0
+    for trig in skill.get("triggers", []):
+        t = str(trig).lower().strip()
+        if t and t in user_input.lower():
+            trigger_hits += 1
+    overlap += trigger_hits * 2
+    if skill.get("name", "") in user_input.lower():
+        overlap += 3
+    overlap += int(skill.get("priority", 0))
+    return overlap
+
+
 def _resolve_model_id(provider: str, model_id: str) -> str:
     raw = str(model_id or "").strip()
     if provider != "openai":
@@ -124,7 +212,18 @@ class AgentState:
     llm_entry: Any
     tools: dict[str, ToolSpec] = field(default_factory=dict)
     tool_docs: dict[str, str] = field(default_factory=dict)
-    skills: list[dict[str, str]] = field(default_factory=list)
+    skills: list[dict[str, Any]] = field(default_factory=list)
+    skill_index: dict[str, dict[str, Any]] = field(default_factory=dict)
+    active_skill_names: list[str] = field(default_factory=list)
+    skill_policy: dict[str, Any] = field(
+        default_factory=lambda: {
+            "mode": "hybrid",
+            "max_skills": 3,
+            "min_score": 1,
+            "skill_total_budget_chars": 2400,
+            "skill_max_chars_each": 900,
+        }
+    )
     messages: list[dict[str, str]] = field(default_factory=list)
     trace: list[dict[str, Any]] = field(default_factory=list)
     plugins: list[dict[str, Any]] = field(default_factory=list)
@@ -280,15 +379,126 @@ class AgentManager:
         skill_name: str,
         skills_dir: str = "python/skills",
     ) -> dict[str, Any]:
-        base = os.path.abspath(skills_dir)
-        path = os.path.join(base, f"{skill_name}.txt")
-        if not os.path.isfile(path):
-            raise FileNotFoundError(f"Skill file not found: {path}")
-        with open(path, "r", encoding="utf-8") as f:
-            content = f.read().strip()
-        state.skills.append({"name": skill_name, "content": content})
-        self._emit(state, "skill_loaded", {"skill": skill_name, "path": path})
-        return {"ok": True, "skill": skill_name, "path": path}
+        base = pathlib.Path(skills_dir).resolve()
+        skill_dir = base / skill_name
+        skill_file = skill_dir / "SKILL.md"
+        if not skill_file.is_file():
+            legacy_txt = base / f"{skill_name}.txt"
+            if not legacy_txt.is_file():
+                raise FileNotFoundError(f"Skill file not found: {skill_file}")
+            content = legacy_txt.read_text(encoding="utf-8").strip()
+            skill = {
+                "name": skill_name,
+                "description": f"Legacy skill {skill_name}",
+                "body": content,
+                "path": str(legacy_txt.resolve()),
+                "metadata": {
+                    "name": skill_name,
+                    "description": f"Legacy skill {skill_name}",
+                },
+            }
+        else:
+            skill = _parse_skill_markdown(skill_file)
+
+        existing = state.skill_index.get(skill["name"])
+        if existing is None:
+            state.skills.append(skill)
+        else:
+            for idx, item in enumerate(state.skills):
+                if item.get("name") == skill["name"]:
+                    state.skills[idx] = skill
+                    break
+        state.skill_index[skill["name"]] = skill
+        if skill["name"] not in state.active_skill_names:
+            state.active_skill_names.append(skill["name"])
+
+        self._emit(
+            state, "skill_loaded", {"skill": skill["name"], "path": skill["path"]}
+        )
+        return {
+            "ok": True,
+            "skill": skill["name"],
+            "path": skill["path"],
+            "description": skill["description"],
+        }
+
+    def discover_skills(
+        self, skills_dir: str = "python/skills"
+    ) -> list[dict[str, Any]]:
+        base = pathlib.Path(skills_dir).resolve()
+        if not base.is_dir():
+            return []
+
+        discovered: list[dict[str, Any]] = []
+        for child in sorted(base.iterdir(), key=lambda p: p.name.lower()):
+            if not child.is_dir():
+                continue
+            skill_file = child / "SKILL.md"
+            if not skill_file.is_file():
+                continue
+            try:
+                spec = _parse_skill_markdown(skill_file)
+            except Exception:
+                continue
+            discovered.append(
+                {
+                    "name": spec.get("name", ""),
+                    "description": spec.get("description", ""),
+                    "path": spec.get("path", ""),
+                    "category": spec.get("category", ""),
+                    "priority": spec.get("priority", 0),
+                    "requires_tools": spec.get("requires_tools", []),
+                }
+            )
+        return discovered
+
+    def list_skills(
+        self,
+        state: AgentState,
+    ) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for s in state.skills:
+            name = str(s.get("name", ""))
+            rows.append(
+                {
+                    "name": name,
+                    "description": s.get("description", ""),
+                    "active": name in state.active_skill_names,
+                    "requires_tools": s.get("requires_tools", []),
+                    "category": s.get("category", ""),
+                    "priority": s.get("priority", 0),
+                    "path": s.get("path", ""),
+                }
+            )
+        return rows
+
+    def enable_skill(self, state: AgentState, skill_name: str) -> dict[str, Any]:
+        if skill_name not in state.skill_index:
+            raise KeyError(f"Skill '{skill_name}' is not loaded")
+        if skill_name not in state.active_skill_names:
+            state.active_skill_names.append(skill_name)
+        self._emit(state, "skill_enabled", {"skill": skill_name})
+        return {"ok": True, "skill": skill_name}
+
+    def disable_skill(self, state: AgentState, skill_name: str) -> dict[str, Any]:
+        state.active_skill_names = [
+            s for s in state.active_skill_names if s != skill_name
+        ]
+        self._emit(state, "skill_disabled", {"skill": skill_name})
+        return {"ok": True, "skill": skill_name}
+
+    def set_skill_policy(self, state: AgentState, **kwargs: Any) -> dict[str, Any]:
+        for key in [
+            "mode",
+            "max_skills",
+            "min_score",
+            "skill_total_budget_chars",
+            "skill_max_chars_each",
+        ]:
+            if key in kwargs:
+                state.skill_policy[key] = kwargs[key]
+        self._emit(state, "skill_policy_updated", {"policy": state.skill_policy})
+        return {"ok": True, "policy": state.skill_policy}
 
     def save_session(
         self,
@@ -301,6 +511,8 @@ class AgentManager:
             "provider": state.provider,
             "metadata": state.metadata,
             "skills": state.skills,
+            "active_skill_names": state.active_skill_names,
+            "skill_policy": state.skill_policy,
             "messages": state.messages,
             "trace": state.trace,
             "tools": [
@@ -354,9 +566,23 @@ class AgentManager:
             if not isinstance(skill, dict):
                 continue
             sname = str(skill.get("name", "")).strip()
-            scontent = str(skill.get("content", ""))
             if sname:
-                state.skills.append({"name": sname, "content": scontent})
+                state.skills.append(skill)
+                state.skill_index[sname] = skill
+
+        active_skill_names = payload.get("active_skill_names", [])
+        if isinstance(active_skill_names, list):
+            state.active_skill_names = [
+                str(x) for x in active_skill_names if isinstance(x, str)
+            ]
+        if not state.active_skill_names:
+            state.active_skill_names = [
+                s.get("name", "") for s in state.skills if s.get("name", "")
+            ]
+
+        skill_policy = payload.get("skill_policy", {})
+        if isinstance(skill_policy, dict):
+            state.skill_policy.update(skill_policy)
 
         for plugin in payload.get("plugins", []):
             if not isinstance(plugin, dict):
@@ -626,9 +852,54 @@ class AgentManager:
         tools_text = "\n".join(tools_block) if tools_block else "- (none)"
 
         skills_block = []
-        for s in state.skills:
-            skills_block.append(f"[{s['name']}]\n{s['content']}")
+        selected_skills = self._select_skills_for_input(state, user_input)
+        per_skill_limit = int(state.skill_policy.get("skill_max_chars_each", 900))
+        total_budget = int(state.skill_policy.get("skill_total_budget_chars", 2400))
+        used = 0
+        selected_names: list[str] = []
+        skipped_names: list[str] = []
+
+        for s in selected_skills:
+            requires_tools = s.get("requires_tools", [])
+            missing_tools = [t for t in requires_tools if t not in state.tools]
+            if missing_tools:
+                skipped_names.append(
+                    f"{s.get('name', '')}:missing_tools={missing_tools}"
+                )
+                continue
+
+            body = str(s.get("body", ""))
+            max_per_skill = s.get("max_injection_chars")
+            if isinstance(max_per_skill, int) and max_per_skill > 0:
+                cap = min(max_per_skill, per_skill_limit)
+            else:
+                cap = per_skill_limit
+            body = body[:cap]
+
+            block = (
+                f"[{s['name']}]\n"
+                f"description: {s.get('description', '')}\n"
+                f"instructions:\n{body}"
+            )
+            projected = used + len(block)
+            if projected > total_budget:
+                skipped_names.append(f"{s.get('name', '')}:budget")
+                continue
+            skills_block.append(block)
+            selected_names.append(str(s.get("name", "")))
+            used = projected
+
         skills_text = "\n\n".join(skills_block) if skills_block else "(none)"
+        self._emit(
+            state,
+            "skills_selected",
+            {
+                "selected": selected_names,
+                "skipped": skipped_names,
+                "skills_chars": used,
+                "skills_budget": total_budget,
+            },
+        )
 
         history_tail = state.messages[-8:]
         history_text = "\n".join(f"{m['role']}: {m['content']}" for m in history_tail)
@@ -649,6 +920,46 @@ class AgentManager:
             f"Recent history:\n{history_text}\n\n"
             f"User input:\n{user_input}\n"
         )
+
+    def _select_skills_for_input(
+        self,
+        state: AgentState,
+        user_input: str,
+    ) -> list[dict[str, Any]]:
+        if not state.skills:
+            return []
+
+        mode = str(state.skill_policy.get("mode", "hybrid"))
+        max_skills = int(state.skill_policy.get("max_skills", 3))
+        min_score = int(state.skill_policy.get("min_score", 1))
+
+        if mode == "manual":
+            selected_manual: list[dict[str, Any]] = []
+            for name in state.active_skill_names:
+                skill = state.skill_index.get(name)
+                if skill is not None:
+                    selected_manual.append(skill)
+            return selected_manual[:max_skills]
+
+        ranked = sorted(
+            state.skills,
+            key=lambda s: _skill_match_score(s, user_input),
+            reverse=True,
+        )
+
+        selected: list[dict[str, Any]] = []
+        for skill in ranked:
+            score = _skill_match_score(skill, user_input)
+            if score < min_score:
+                continue
+            selected.append(skill)
+
+        if mode in ("legacy", "hybrid") and not selected:
+            for name in state.active_skill_names:
+                skill = state.skill_index.get(name)
+                if skill is not None:
+                    selected.append(skill)
+        return selected[:max_skills]
 
     def _invoke_tool(
         self,
@@ -861,6 +1172,13 @@ def agent_register_builtin_tools(agent_entry: Any, names: list[str]) -> dict:
     return _agent_manager.register_builtin_tools(agent_entry, names)
 
 
+def agent_discover_skills(kwargs: Optional[dict] = None) -> list[dict[str, Any]]:
+    if kwargs is None:
+        kwargs = {}
+    skills_dir = str(kwargs.get("skills_dir", "python/skills"))
+    return _agent_manager.discover_skills(skills_dir=skills_dir)
+
+
 def agent_load_skill(
     agent_entry: Any,
     skill_name: str,
@@ -880,6 +1198,24 @@ def agent_load_plugin(
     if kwargs is None:
         kwargs = {}
     return _agent_manager.load_plugin(agent_entry, plugin_entrypoint, **kwargs)
+
+
+def agent_list_skills(agent_entry: Any) -> list[dict[str, Any]]:
+    return _agent_manager.list_skills(agent_entry)
+
+
+def agent_enable_skill(agent_entry: Any, skill_name: str) -> dict:
+    return _agent_manager.enable_skill(agent_entry, skill_name)
+
+
+def agent_disable_skill(agent_entry: Any, skill_name: str) -> dict:
+    return _agent_manager.disable_skill(agent_entry, skill_name)
+
+
+def agent_set_skill_policy(agent_entry: Any, kwargs: Optional[dict] = None) -> dict:
+    if kwargs is None:
+        kwargs = {}
+    return _agent_manager.set_skill_policy(agent_entry, **kwargs)
 
 
 def agent_save_session(agent_entry: Any, path: str) -> dict:

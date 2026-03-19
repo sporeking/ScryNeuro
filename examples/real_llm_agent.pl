@@ -16,11 +16,21 @@
 :- op(700, xfx, :=).
 :- use_module('../prolog/scryer_py').
 :- use_module('../prolog/scryer_agent').
+:- use_module(library(lists)).
 :- use_module(library(os)).
 
 run_example(Name, Goal) :-
     catch(Goal, E, (format("[ERROR] ~s failed:~n", [Name]), print_py_error(E), fail)),
     format("[OK] ~s~n", [Name]).
+
+contains_chars(Haystack, Needle) :-
+    append(_, Rest, Haystack),
+    append(Needle, _, Rest), !.
+
+assert_contains(Haystack, Needle, Context) :-
+    ( contains_chars(Haystack, Needle) -> true
+    ; throw(error(assertion_failed(Context), assert_contains/3))
+    ).
 
 optional_getenv(Key, Default, Value) :-
     ( catch(getenv(Key, V), _, fail) -> Value = V
@@ -31,14 +41,36 @@ test_real_llm_agent :-
     optional_getenv("OPENAI_MODEL", "auto", Model),
     optional_getenv("OPENAI_BASE_URL", "", BaseUrl),
 
+    %% Skill system preflight (nanobot-style catalog discovery)
+    agent_discover_skills(Discovered, [skills_dir="python/skills"]),
+    format("Discovered skills: ~s~n", [Discovered]),
+    assert_contains(Discovered, "\"name\": \"research-web-markdown\"", discovered_research_skill),
+    assert_contains(Discovered, "\"name\": \"shell-safety-exec\"", discovered_shell_skill),
+
     ( BaseUrl = [] ->
         agent_create(openai_agent, Model, [provider=openai])
     ; agent_create(openai_agent, Model, [provider=openai, base_url=BaseUrl])
     ),
 
     agent_register_builtin_tools(openai_agent, [web_fetch, shell_exec, read_file, write_file, list_dir, grep_text]),
-    agent_load_skill(openai_agent, research, [skills_dir="python/skills"]),
-    agent_load_skill(openai_agent, shell_safety, [skills_dir="python/skills"]),
+    agent_load_skill(openai_agent, 'research-web-markdown', [skills_dir="python/skills"]),
+    agent_load_skill(openai_agent, 'shell-safety-exec', [skills_dir="python/skills"]),
+    agent_set_skill_policy(openai_agent, [mode=hybrid, max_skills=2, min_score=1, skill_total_budget_chars=1800, skill_max_chars_each=900]),
+    agent_list_skills(openai_agent, SkillsBefore),
+    format("Loaded skills catalog: ~s~n", [SkillsBefore]),
+    assert_contains(SkillsBefore, "\"name\": \"research-web-markdown\"", loaded_research_skill),
+    assert_contains(SkillsBefore, "\"name\": \"shell-safety-exec\"", loaded_shell_skill),
+    assert_contains(SkillsBefore, "\"active\": true", skills_initially_active),
+
+    %% Verify enable/disable path works
+    agent_disable_skill(openai_agent, 'shell-safety-exec'),
+    agent_list_skills(openai_agent, SkillsDisabled),
+    format("Skills after disable: ~s~n", [SkillsDisabled]),
+    assert_contains(SkillsDisabled, "\"active\": false", disable_skill_effect),
+    agent_enable_skill(openai_agent, 'shell-safety-exec'),
+    agent_list_skills(openai_agent, SkillsEnabled),
+    format("Skills after re-enable: ~s~n", [SkillsEnabled]),
+    assert_contains(SkillsEnabled, "\"active\": true", enable_skill_effect),
 
     Prompt = "You are a research agent. Use tools to fetch one public web page related to AI/news, then write a concise markdown report to reports/latest_news.md with sections: Title, Sources, Summary, Key Points (3 bullets). Return a brief final message mentioning the file path.",
     agent_run(openai_agent, Prompt, Out, [max_steps=5, max_auto_tools=4, temperature=0.0, max_tokens=800]),
@@ -55,6 +87,8 @@ test_real_llm_agent :-
 
     agent_trace(openai_agent, Trace),
     format("OpenAI trace: ~s~n", [Trace]),
+    assert_contains(Trace, "\"type\": \"skills_selected\"", trace_has_skills_selected),
+    assert_contains(Trace, "\"skills_budget\": 1800", trace_has_budget_event),
 
     agent_unload(openai_agent).
 

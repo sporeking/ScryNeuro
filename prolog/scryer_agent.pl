@@ -16,10 +16,16 @@
     agent_register_tool/3,
     agent_register_tool/4,
     agent_register_builtin_tools/2,
+    agent_discover_skills/1,
+    agent_discover_skills/2,
     agent_load_skill/2,
     agent_load_skill/3,
     agent_load_plugin/2,
     agent_load_plugin/3,
+    agent_list_skills/2,
+    agent_enable_skill/2,
+    agent_disable_skill/2,
+    agent_set_skill_policy/2,
     agent_save_session/2,
     agent_load_session/2,
     agent_load_session/3,
@@ -109,6 +115,22 @@ agent_register_builtin_tools(AgentName, ToolNames) :-
     py_free(ToolListH),
     py_free(Runtime).
 
+%% agent_discover_skills(-SkillsJson)
+agent_discover_skills(SkillsJson) :-
+    agent_discover_skills(SkillsJson, []).
+
+%% agent_discover_skills(-SkillsJson, +Options)
+%% Options may include: [skills_dir="python/skills"]
+agent_discover_skills(SkillsJson, Options) :-
+    py_import("scryer_agent_runtime", Runtime),
+    py_dict_new(Kwargs),
+    load_options(Kwargs, Options),
+    py_call(Runtime, "agent_discover_skills", Kwargs, SkillsH),
+    py_to_json(SkillsH, SkillsJson),
+    py_free(SkillsH),
+    py_free(Kwargs),
+    py_free(Runtime).
+
 add_tool_name_handles([], _).
 add_tool_name_handles([Name | Rest], ToolListH) :- !,
     atom_chars(Name, NameChars),
@@ -127,7 +149,8 @@ agent_load_skill(AgentName, SkillName) :-
     agent_load_skill(AgentName, SkillName, []).
 
 %% agent_load_skill(+AgentName, +SkillName, +Options)
-%% Options may include: [skills_dir="skills"]
+%% Preferred skill format: Anthropic-style folder with SKILL.md frontmatter.
+%% Options may include: [skills_dir="python/skills"]
 agent_load_skill(AgentName, SkillName, Options) :-
     ( agent_registry(AgentName, AgentHandle) -> true
     ; throw(error(agent_not_found(AgentName), agent_load_skill/3))
@@ -161,6 +184,56 @@ agent_load_plugin(AgentName, PluginEntrypoint, Options) :-
     py_free(ResultH),
     py_free(Kwargs),
     py_free(PyEntrypoint),
+    py_free(Runtime).
+
+%% agent_list_skills(+AgentName, -SkillsJson)
+agent_list_skills(AgentName, SkillsJson) :-
+    ( agent_registry(AgentName, AgentHandle) -> true
+    ; throw(error(agent_not_found(AgentName), agent_list_skills/2))
+    ),
+    py_import("scryer_agent_runtime", Runtime),
+    py_call(Runtime, "agent_list_skills", AgentHandle, SkillsH),
+    py_to_json(SkillsH, SkillsJson),
+    py_free(SkillsH),
+    py_free(Runtime).
+
+%% agent_enable_skill(+AgentName, +SkillName)
+agent_enable_skill(AgentName, SkillName) :-
+    ( agent_registry(AgentName, AgentHandle) -> true
+    ; throw(error(agent_not_found(AgentName), agent_enable_skill/2))
+    ),
+    py_import("scryer_agent_runtime", Runtime),
+    atom_chars(SkillName, SkillChars),
+    py_from_str(SkillChars, PySkillName),
+    py_call(Runtime, "agent_enable_skill", AgentHandle, PySkillName, ResultH),
+    py_free(ResultH),
+    py_free(PySkillName),
+    py_free(Runtime).
+
+%% agent_disable_skill(+AgentName, +SkillName)
+agent_disable_skill(AgentName, SkillName) :-
+    ( agent_registry(AgentName, AgentHandle) -> true
+    ; throw(error(agent_not_found(AgentName), agent_disable_skill/2))
+    ),
+    py_import("scryer_agent_runtime", Runtime),
+    atom_chars(SkillName, SkillChars),
+    py_from_str(SkillChars, PySkillName),
+    py_call(Runtime, "agent_disable_skill", AgentHandle, PySkillName, ResultH),
+    py_free(ResultH),
+    py_free(PySkillName),
+    py_free(Runtime).
+
+%% agent_set_skill_policy(+AgentName, +Options)
+agent_set_skill_policy(AgentName, Options) :-
+    ( agent_registry(AgentName, AgentHandle) -> true
+    ; throw(error(agent_not_found(AgentName), agent_set_skill_policy/2))
+    ),
+    py_import("scryer_agent_runtime", Runtime),
+    py_dict_new(Kwargs),
+    load_options(Kwargs, Options),
+    py_call(Runtime, "agent_set_skill_policy", AgentHandle, Kwargs, ResultH),
+    py_free(ResultH),
+    py_free(Kwargs),
     py_free(Runtime).
 
 %% agent_save_session(+AgentName, +Path)
