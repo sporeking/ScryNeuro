@@ -27,6 +27,44 @@ NN、LLM 和 RL 功能以**可选插件**形式提供——各自为独立模块
 | 强化学习   | `prolog/scryer_rl.pl`  | `rl_create/4`, `rl_load/3,4`, `rl_save/2`, `rl_action/3,4`, `rl_train/2,3`, `rl_evaluate/3`, `rl_info/2` |
 
 每个插件均有对应的 Python 运行时模块（`python/scryer_*_runtime.py`），在首次使用时懒加载。
+
+### Agent Profile 配置（Provider / Base URL / API / Model）
+
+Agent 子系统通过 JSON 读取 profile 配置，并支持 clean clone 回退：
+
+- 首选本地文件：`python/scryer_agent/config/agent_profiles.json`
+  - 这个文件用于本地私有配置，当前仓库中已被 gitignore。
+- 兼容旧路径：`python/config/agent_profiles.json`
+- clean clone 回退：`python/scryer_agent/config/agent_profiles.example.json`
+- 环境变量覆盖：`SCRYNEURO_AGENT_CONFIG=/abs/path/to/agent_profiles.json`
+- 可选本地覆盖文件：`<config>.local.json`
+  - 首选本地覆盖路径：`python/scryer_agent/config/agent_profiles.local.json`
+  - 兼容旧路径：`python/config/agent_profiles.local.json`
+
+当本地覆盖文件存在时，会对基础配置做 deep-merge（嵌套对象递归合并，标量字段直接覆盖）。
+
+这意味着：即使 fresh clone 没有本地 `agent_profiles.json`，系统仍可从 example 配置中发现 `default_mock` 等 profile；真实密钥则继续保留在本地文件或环境变量中。
+
+运行时配置优先级（从高到低）如下：
+
+1. 调用时显式传入的 options
+2. 选中的 profile 配置（优先 `python/scryer_agent/config/agent_profiles.json`，兼容旧的 `python/config/agent_profiles.json`，若都缺失则回退到 package 内 example 配置），再叠加可选 `.local.json`
+3. 环境变量 / `.env` 回退（对 OpenAI：`OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL`；当 model=`auto` 时会读取 `OPENAI_MODEL`）
+4. 代码内硬默认（`provider=openai`、`model=auto`，以及 `OPENAI_MODEL` 缺失时回退到 `gpt-4o-mini`）
+
+推荐的本地初始化方式：
+
+```bash
+# 1）复制 example 配置到本地私有文件
+cp python/scryer_agent/config/agent_profiles.example.json python/scryer_agent/config/agent_profiles.json
+
+# 2）复制 .env 模板并写入密钥
+cp .env.example .env
+```
+
+example 配置中不会放真实 API key。若 profile 中未显式填写 `api_key`，runtime 会在创建 agent 时回退到环境变量或 `.env`。
+
+agent 包现在位于 `python/scryer_agent/` 下。迁移期内仍兼容 `python/config/` 和根目录 shim 模块。
 ---
 
 ## 安装部署
@@ -492,6 +530,9 @@ pip install gradio
 
 ```bash
 python python/web_ui/app_gradio.py
+
+# canonical package path
+PYTHONPATH=python python -m scryer_agent.web_ui.app_gradio
 ```
 
 浏览器打开：`http://127.0.0.1:7860`
@@ -511,9 +552,10 @@ python python/web_ui/app_gradio.py
 
 ### 低耦合设计
 
-- `python/web_ui/app_gradio.py`：仅负责 UI 展示与交互
-- `python/web_ui/agent_adapter.py`：薄适配层，封装对 runtime API 的调用
-- 核心逻辑仍在 `python/scryer_agent_runtime.py` 等模块
+- `python/scryer_agent/web_ui/app_gradio.py`：canonical UI 模块
+- `python/scryer_agent/web_ui/agent_adapter.py`：canonical adapter 层
+- `python/web_ui/app_gradio.py`：兼容旧启动方式的 launcher shim
+- 核心逻辑现已收拢到 `python/scryer_agent/`，根目录旧模块名暂时保留为兼容层
 
 ---
 

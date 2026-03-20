@@ -17,8 +17,8 @@ test_profiles_flow :-
         enable_experiment_log=true,
         experiment_run_id="test_profile_agent_run"
     ]),
-    agent_enable_tools(profile_agent, [add]),
-    agent_run(profile_agent, "tool:add {\"a\": 1, \"b\": 41}", Out),
+    agent_enable_tools(profile_agent, [list_dir]),
+    agent_run(profile_agent, "tool:list_dir {\"path\": \".\"}", Out),
     format("Profile agent output: ~s~n", [Out]),
     agent_close(profile_agent).
 

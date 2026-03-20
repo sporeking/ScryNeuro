@@ -30,21 +30,41 @@ Each plugin has a matching Python runtime module (`python/scryer_*_runtime.py`) 
 
 ### Agent Profile Configuration (Provider/Base URL/API/Model)
 
-The agent subsystem reads profile configuration from JSON:
+The agent subsystem reads profile configuration from JSON, with a clean-clone fallback:
 
-- Default file: `python/config/agent_profiles.json`
+- Preferred local file: `python/scryer_agent/config/agent_profiles.json`
+  - This file is intended for local use and is gitignored in this repo.
+- Legacy local file still supported: `python/config/agent_profiles.json`
+- Clean-clone fallback: `python/scryer_agent/config/agent_profiles.example.json`
 - Override with env: `SCRYNEURO_AGENT_CONFIG=/abs/path/to/agent_profiles.json`
 - Optional local override file: `<config>.local.json`
-  - Example: `python/config/agent_profiles.local.json`
+  - Preferred local override path: `python/scryer_agent/config/agent_profiles.local.json`
+  - Legacy override path still supported: `python/config/agent_profiles.local.json`
 
 When a local override exists, it is deep-merged into the base config (nested objects are merged; scalar values are overridden).
+
+This means a fresh clone can still discover profiles such as `default_mock` from the example config, while real secrets remain in local-only files or environment variables.
 
 Runtime precedence for effective settings is:
 
 1. Explicit options passed at agent creation call (highest priority)
-2. Profile fields from config file(s)
+2. Profile fields from the selected config file (prefer `python/scryer_agent/config/agent_profiles.json`, fallback to legacy `python/config/agent_profiles.json`, otherwise use package example config) plus optional `.local.json` override
 3. Environment / `.env` fallback (for OpenAI: `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL` when model is `auto`)
 4. Hard defaults (`provider=openai`, `model=auto`, then `OPENAI_MODEL` fallback to `gpt-4o-mini`)
+
+Recommended local setup:
+
+```bash
+# 1) Keep real secrets out of version control
+cp python/scryer_agent/config/agent_profiles.example.json python/scryer_agent/config/agent_profiles.json
+
+# 2) Put secrets in .env (also gitignored)
+cp .env.example .env
+```
+
+The example config intentionally omits real API keys. If a profile leaves `api_key` empty, the runtime will fall back to environment variables or `.env` during agent creation.
+
+The agent package now lives under `python/scryer_agent/`. Legacy paths under `python/config/` and root-level compatibility modules remain supported during the migration period.
 
 ---
 
@@ -456,6 +476,9 @@ pip install gradio
 
 ```bash
 python python/web_ui/app_gradio.py
+
+# Canonical package path
+PYTHONPATH=python python -m scryer_agent.web_ui.app_gradio
 ```
 
 Then open: `http://127.0.0.1:7860`
@@ -475,9 +498,10 @@ Then open: `http://127.0.0.1:7860`
 
 ### Low-coupling design
 
-- `python/web_ui/app_gradio.py`: UI only
-- `python/web_ui/agent_adapter.py`: thin adapter layer calling existing runtime APIs
-- Core logic remains in `python/scryer_agent_runtime.py` and related modules
+- `python/scryer_agent/web_ui/app_gradio.py`: canonical UI module
+- `python/scryer_agent/web_ui/agent_adapter.py`: canonical adapter layer
+- `python/web_ui/app_gradio.py`: legacy launcher shim for compatibility
+- Core logic now lives in `python/scryer_agent/` with legacy root-level shim modules preserved
 
 ---
 

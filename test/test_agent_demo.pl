@@ -4,7 +4,7 @@
 %%
 %% Demonstrates a practical, extensible agent setup:
 %%   - Built-in tools registration (web_fetch/shell/read/write/list/grep)
-%%   - Skills loading from Anthropic-style directories under ./python/skills
+%%   - Skills loading from Anthropic-style directories under ./python/scryer_agent/skills
 %%   - Behavior plugin loading (memory compression hook)
 %%   - Real step/run execution in mock mode (offline deterministic)
 %%
@@ -26,22 +26,22 @@ demo_setup_agent :-
     agent_create(practical_agent, "mock-v2", [provider=mock]),
     agent_register_builtin_tools(
         practical_agent,
-        [web_fetch, shell_exec, read_file, write_file, list_dir, grep_text, add, multiply, reverse]
+        [web_fetch, shell_exec, read_file, write_file, list_dir, grep_text]
     ),
-    agent_load_skill(practical_agent, 'research-web-markdown', [skills_dir="python/skills"]),
-    agent_load_skill(practical_agent, 'shell-safety-exec', [skills_dir="python/skills"]),
-    agent_load_plugin(practical_agent, 'scryer_agent_plugins:memory_compress_plugin', [max_messages=10, keep_tail=6]),
+    agent_load_skill(practical_agent, 'research-web-markdown', [skills_dir="python/scryer_agent/skills"]),
+    agent_load_skill(practical_agent, 'shell-safety-exec', [skills_dir="python/scryer_agent/skills"]),
+    agent_load_plugin(practical_agent, 'scryer_agent.plugins:memory_compress_plugin', [max_messages=10, keep_tail=6]),
     agent_list(Agents),
     format("Agents: ~s~n", [Agents]).
 
 demo_direct_tool_calls :-
     format("~n=== Direct Tool Calls via Agent Step ===~n", []),
-    agent_step(practical_agent, "tool:add {\"a\": 7, \"b\": 8}", Out1),
-    format("Add result: ~s~n", [Out1]),
-    agent_step(practical_agent, "tool:shell_exec {\"command\": \"pwd\"}", Out2),
+    agent_step(practical_agent, "tool:list_dir {\"path\": \".\"}", Out1),
+    format("List result: ~s~n", [Out1]),
+    agent_step(practical_agent, "tool:shell_exec {\"command\": \"pwd\", \"allow_unsafe_shell\": true}", Out2),
     format("Shell result: ~s~n", [Out2]),
-    agent_step(practical_agent, "tool:list_dir {\"path\": \".\"}", Out3),
-    format("List dir result: ~s~n", [Out3]).
+    agent_step(practical_agent, "tool:read_file {\"path\": \"README.md\"}", Out3),
+    format("Read file result: ~s~n", [Out3]).
 
 demo_agent_run :-
     format("~n=== Agent Run ===~n", []),
@@ -63,7 +63,7 @@ demo_session_persistence :-
     agent_save_session(practical_agent, "checkpoints/agent_demo_session.json"),
     format("Saved session to checkpoints/agent_demo_session.json~n", []),
     agent_load_session(restored_agent, "checkpoints/agent_demo_session.json", [provider=mock, model_id="mock-restored"]),
-    agent_step(restored_agent, "tool:add {\"a\": 1, \"b\": 2}", RestoredOut),
+    agent_step(restored_agent, "tool:list_dir {\"path\": \".\"}", RestoredOut),
     format("Restored agent output: ~s~n", [RestoredOut]),
     agent_unload(restored_agent).
 

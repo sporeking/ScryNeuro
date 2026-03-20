@@ -7,8 +7,8 @@
 %% Usage:
 %%   :- use_module('prolog/scryer_agent').
 %%   ?- agent_create(demo, "mock-v1", [provider=mock]).
-%%   ?- agent_register_tool(demo, add, 'scryer_agent_tools:add_numbers').
-%%   ?- agent_run(demo, "tool:add {\"a\": 2, \"b\": 3}", Out).
+%%   ?- agent_register_builtin_tools(demo, [list_dir]).
+%%   ?- agent_run(demo, "tool:list_dir {\"path\": "."}", Out).
 
 :- module(scryer_agent, [
     agent_create/3,
@@ -148,7 +148,7 @@ agent_register_tool(AgentName, ToolName, Entrypoint, Options) :-
 
 %% agent_register_builtin_tools(+AgentName, +ToolNames)
 %% Tool names: web_fetch, shell_exec, read_file, write_file,
-%%             list_dir, grep_text, add, multiply, reverse.
+%%             list_dir, grep_text.
 agent_register_builtin_tools(AgentName, ToolNames) :-
     ( agent_registry(AgentName, AgentHandle) -> true
     ; throw(error(agent_not_found(AgentName), agent_register_builtin_tools/2))
