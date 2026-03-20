@@ -67,7 +67,7 @@ agent_create(Name, ModelId, Options, Handle) :-
         throw(error(agent_already_exists(Name), agent_create/4))
     ; true
     ),
-    py_import("scryer_agent_runtime", Runtime),
+    py_import("scryer_agent.runtime", Runtime),
     py_dict_new(Kwargs),
     load_options(Kwargs, Options),
     atom_chars(Name, NameChars),
@@ -82,7 +82,7 @@ agent_create(Name, ModelId, Options, Handle) :-
 
 %% agent_list_profiles(-ProfilesJson)
 agent_list_profiles(ProfilesJson) :-
-    py_import("scryer_agent_runtime", Runtime),
+    py_import("scryer_agent.runtime", Runtime),
     py_call(Runtime, "agent_list_profiles", ProfilesH),
     py_to_json(ProfilesH, ProfilesJson),
     py_free(ProfilesH),
@@ -90,7 +90,7 @@ agent_list_profiles(ProfilesJson) :-
 
 %% agent_get_profile(+ProfileName, -ProfileJson)
 agent_get_profile(ProfileName, ProfileJson) :-
-    py_import("scryer_agent_runtime", Runtime),
+    py_import("scryer_agent.runtime", Runtime),
     to_py_str(ProfileName, PyProfileName),
     py_call(Runtime, "agent_get_profile", PyProfileName, ProfileH),
     py_to_json(ProfileH, ProfileJson),
@@ -109,7 +109,7 @@ agent_create_from_profile(Name, ProfileName, Options) :-
         throw(error(agent_already_exists(Name), agent_create_from_profile/3))
     ; true
     ),
-    py_import("scryer_agent_runtime", Runtime),
+    py_import("scryer_agent.runtime", Runtime),
     atom_chars(Name, NameChars),
     py_from_str(NameChars, PyName),
     to_py_str(ProfileName, PyProfileName),
@@ -128,12 +128,12 @@ agent_register_tool(AgentName, ToolName, Entrypoint) :-
 
 %% agent_register_tool(+AgentName, +ToolName, +Entrypoint, +Options)
 %%   Entrypoint format: 'python_module:function_name'
-%%   Example: 'scryer_agent_tools:add_numbers'
+%%   Example: 'scryer_agent.tools:tool_list_dir'
 agent_register_tool(AgentName, ToolName, Entrypoint, Options) :-
     ( agent_registry(AgentName, AgentHandle) -> true
     ; throw(error(agent_not_found(AgentName), agent_register_tool/4))
     ),
-    py_import("scryer_agent_runtime", Runtime),
+    py_import("scryer_agent.runtime", Runtime),
     atom_chars(ToolName, ToolChars),
     py_from_str(ToolChars, PyToolName),
     to_py_str(Entrypoint, PyEntrypoint),
@@ -153,7 +153,7 @@ agent_register_builtin_tools(AgentName, ToolNames) :-
     ( agent_registry(AgentName, AgentHandle) -> true
     ; throw(error(agent_not_found(AgentName), agent_register_builtin_tools/2))
     ),
-    py_import("scryer_agent_runtime", Runtime),
+    py_import("scryer_agent.runtime", Runtime),
     py_list_from_handles([], ToolListH),
     add_tool_name_handles(ToolNames, ToolListH),
     py_call(Runtime, "agent_register_builtin_tools", AgentHandle, ToolListH, ResultH),
@@ -166,9 +166,9 @@ agent_discover_skills(SkillsJson) :-
     agent_discover_skills(SkillsJson, []).
 
 %% agent_discover_skills(-SkillsJson, +Options)
-%% Options may include: [skills_dir="python/skills"]
+%% Options may include: [skills_dir="python/scryer_agent/skills"]
 agent_discover_skills(SkillsJson, Options) :-
-    py_import("scryer_agent_runtime", Runtime),
+    py_import("scryer_agent.runtime", Runtime),
     py_dict_new(Kwargs),
     load_options(Kwargs, Options),
     py_call(Runtime, "agent_discover_skills", Kwargs, SkillsH),
@@ -196,12 +196,12 @@ agent_load_skill(AgentName, SkillName) :-
 
 %% agent_load_skill(+AgentName, +SkillName, +Options)
 %% Preferred skill format: Anthropic-style folder with SKILL.md frontmatter.
-%% Options may include: [skills_dir="python/skills"]
+%% Options may include: [skills_dir="python/scryer_agent/skills"]
 agent_load_skill(AgentName, SkillName, Options) :-
     ( agent_registry(AgentName, AgentHandle) -> true
     ; throw(error(agent_not_found(AgentName), agent_load_skill/3))
     ),
-    py_import("scryer_agent_runtime", Runtime),
+    py_import("scryer_agent.runtime", Runtime),
     atom_chars(SkillName, SkillChars),
     py_from_str(SkillChars, PySkillName),
     py_dict_new(Kwargs),
@@ -222,7 +222,7 @@ agent_load_plugin(AgentName, PluginEntrypoint, Options) :-
     ( agent_registry(AgentName, AgentHandle) -> true
     ; throw(error(agent_not_found(AgentName), agent_load_plugin/3))
     ),
-    py_import("scryer_agent_runtime", Runtime),
+    py_import("scryer_agent.runtime", Runtime),
     to_py_str(PluginEntrypoint, PyEntrypoint),
     py_dict_new(Kwargs),
     load_options(Kwargs, Options),
@@ -237,7 +237,7 @@ agent_list_skills(AgentName, SkillsJson) :-
     ( agent_registry(AgentName, AgentHandle) -> true
     ; throw(error(agent_not_found(AgentName), agent_list_skills/2))
     ),
-    py_import("scryer_agent_runtime", Runtime),
+    py_import("scryer_agent.runtime", Runtime),
     py_call(Runtime, "agent_list_skills", AgentHandle, SkillsH),
     py_to_json(SkillsH, SkillsJson),
     py_free(SkillsH),
@@ -248,7 +248,7 @@ agent_enable_skill(AgentName, SkillName) :-
     ( agent_registry(AgentName, AgentHandle) -> true
     ; throw(error(agent_not_found(AgentName), agent_enable_skill/2))
     ),
-    py_import("scryer_agent_runtime", Runtime),
+    py_import("scryer_agent.runtime", Runtime),
     atom_chars(SkillName, SkillChars),
     py_from_str(SkillChars, PySkillName),
     py_call(Runtime, "agent_enable_skill", AgentHandle, PySkillName, ResultH),
@@ -261,7 +261,7 @@ agent_disable_skill(AgentName, SkillName) :-
     ( agent_registry(AgentName, AgentHandle) -> true
     ; throw(error(agent_not_found(AgentName), agent_disable_skill/2))
     ),
-    py_import("scryer_agent_runtime", Runtime),
+    py_import("scryer_agent.runtime", Runtime),
     atom_chars(SkillName, SkillChars),
     py_from_str(SkillChars, PySkillName),
     py_call(Runtime, "agent_disable_skill", AgentHandle, PySkillName, ResultH),
@@ -274,7 +274,7 @@ agent_set_skill_policy(AgentName, Options) :-
     ( agent_registry(AgentName, AgentHandle) -> true
     ; throw(error(agent_not_found(AgentName), agent_set_skill_policy/2))
     ),
-    py_import("scryer_agent_runtime", Runtime),
+    py_import("scryer_agent.runtime", Runtime),
     py_dict_new(Kwargs),
     load_options(Kwargs, Options),
     py_call(Runtime, "agent_set_skill_policy", AgentHandle, Kwargs, ResultH),
@@ -287,7 +287,7 @@ agent_save_session(AgentName, Path) :-
     ( agent_registry(AgentName, AgentHandle) -> true
     ; throw(error(agent_not_found(AgentName), agent_save_session/2))
     ),
-    py_import("scryer_agent_runtime", Runtime),
+    py_import("scryer_agent.runtime", Runtime),
     to_py_str(Path, PyPath),
     py_call(Runtime, "agent_save_session", AgentHandle, PyPath, ResultH),
     py_free(ResultH),
@@ -305,7 +305,7 @@ agent_load_session(Name, Path, Options) :-
         throw(error(agent_already_exists(Name), agent_load_session/3))
     ; true
     ),
-    py_import("scryer_agent_runtime", Runtime),
+    py_import("scryer_agent.runtime", Runtime),
     atom_chars(Name, NameChars),
     py_from_str(NameChars, PyName),
     to_py_str(Path, PyPath),
@@ -329,7 +329,7 @@ agent_step(AgentName, Input, OutputJson, Options) :-
     ( agent_registry(AgentName, AgentHandle) -> true
     ; throw(error(agent_not_found(AgentName), agent_step/4))
     ),
-    py_import("scryer_agent_runtime", Runtime),
+    py_import("scryer_agent.runtime", Runtime),
     to_py_str(Input, PyInput),
     py_dict_new(Kwargs),
     load_options(Kwargs, Options),
@@ -350,7 +350,7 @@ agent_run(AgentName, Input, OutputJson, Options) :-
     ( agent_registry(AgentName, AgentHandle) -> true
     ; throw(error(agent_not_found(AgentName), agent_run/4))
     ),
-    py_import("scryer_agent_runtime", Runtime),
+    py_import("scryer_agent.runtime", Runtime),
     to_py_str(Input, PyInput),
     py_dict_new(Kwargs),
     load_options(Kwargs, Options),
@@ -366,7 +366,7 @@ agent_trace(AgentName, TraceJson) :-
     ( agent_registry(AgentName, AgentHandle) -> true
     ; throw(error(agent_not_found(AgentName), agent_trace/2))
     ),
-    py_import("scryer_agent_runtime", Runtime),
+    py_import("scryer_agent.runtime", Runtime),
     py_call(Runtime, "agent_trace", AgentHandle, TraceH),
     py_to_json(TraceH, TraceJson),
     py_free(TraceH),
@@ -375,7 +375,7 @@ agent_trace(AgentName, TraceJson) :-
 %% agent_list(-AgentsJson)
 %% Returns JSON array of registered agent names.
 agent_list(AgentsJson) :-
-    py_import("scryer_agent_runtime", Runtime),
+    py_import("scryer_agent.runtime", Runtime),
     py_call(Runtime, "agent_list", ListH),
     py_to_json(ListH, AgentsJson),
     py_free(ListH),
@@ -387,7 +387,7 @@ agent_unload(AgentName) :-
     ( agent_registry(AgentName, AgentHandle) -> true
     ; throw(error(agent_not_found(AgentName), agent_unload/1))
     ),
-    py_import("scryer_agent_runtime", Runtime),
+    py_import("scryer_agent.runtime", Runtime),
     py_call(Runtime, "agent_unload", AgentHandle, ResultH),
     py_free(ResultH),
     py_free(Runtime),

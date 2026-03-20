@@ -529,10 +529,10 @@ pip install gradio
 ### 启动
 
 ```bash
-python python/web_ui/app_gradio.py
-
-# canonical package path
 PYTHONPATH=python python -m scryer_agent.web_ui.app_gradio
+
+# 旧 launcher shim 仍兼容
+python python/web_ui/app_gradio.py
 ```
 
 浏览器打开：`http://127.0.0.1:7860`

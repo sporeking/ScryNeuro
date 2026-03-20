@@ -6,7 +6,6 @@ import sys
 
 
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(PROJECT_ROOT / "python" / "web_ui"))
 sys.path.insert(0, str(PROJECT_ROOT / "python"))
 
 

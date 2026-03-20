@@ -23,7 +23,7 @@
 :- use_module(library(lists)).
 
 tool_call_json(ToolName, Options, ResultJson) :-
-    py_import("scryer_tool_runtime", Runtime),
+    py_import("scryer_agent.tool_runtime", Runtime),
     atom_chars(ToolName, ToolChars),
     py_from_str(ToolChars, PyToolName),
     py_dict_new(Kwargs),
@@ -36,7 +36,7 @@ tool_call_json(ToolName, Options, ResultJson) :-
     py_free(Runtime).
 
 tool_list_available(ToolsJson) :-
-    py_import("scryer_tool_runtime", Runtime),
+    py_import("scryer_agent.tool_runtime", Runtime),
     py_call(Runtime, "tool_list_available", ToolsH),
     py_to_json(ToolsH, ToolsJson),
     py_free(ToolsH),

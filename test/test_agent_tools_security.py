@@ -11,7 +11,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "python"))
 
 
 def _agent_tools_module():
-    return importlib.import_module("scryer_agent_tools")
+    return importlib.import_module("scryer_agent.tools")
 
 
 def test_read_file_rejects_paths_outside_tool_root(tmp_path: pathlib.Path) -> None:

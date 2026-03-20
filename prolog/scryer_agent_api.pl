@@ -50,7 +50,7 @@ agent_tools(ToolsJson) :-
     tool_list_available(ToolsJson).
 
 agent_skills(SkillsJson) :-
-    agent_discover_skills(SkillsJson, [skills_dir="python/skills"]).
+    agent_discover_skills(SkillsJson, [skills_dir="python/scryer_agent/skills"]).
 
 agent_new(Name, Provider, Model, Options) :-
     append([provider=Provider], Options, FullOptions),
@@ -67,7 +67,7 @@ agent_enable_tools(Name, ToolList) :-
 
 agent_enable_skills(_, []).
 agent_enable_skills(Name, [S | Rest]) :-
-    agent_load_skill(Name, S, [skills_dir="python/skills"]),
+    agent_load_skill(Name, S, [skills_dir="python/scryer_agent/skills"]),
     agent_enable_skills(Name, Rest).
 
 agent_run(Name, Task, OutputJson) :-

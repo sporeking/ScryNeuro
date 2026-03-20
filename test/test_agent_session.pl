@@ -9,8 +9,8 @@
 test_session_roundtrip :-
     agent_create(sess_agent, "mock-v2", [provider=mock]),
     agent_register_builtin_tools(sess_agent, [list_dir]),
-    agent_load_skill(sess_agent, 'research-web-markdown', [skills_dir="python/skills"]),
-    agent_load_plugin(sess_agent, 'scryer_agent_plugins:memory_compress_plugin', [max_messages=8, keep_tail=4]),
+    agent_load_skill(sess_agent, 'research-web-markdown', [skills_dir="python/scryer_agent/skills"]),
+    agent_load_plugin(sess_agent, 'scryer_agent.plugins:memory_compress_plugin', [max_messages=8, keep_tail=4]),
     agent_step(sess_agent, "tool:list_dir {\"path\": \".\"}", Out1),
     format("Initial step: ~s~n", [Out1]),
 

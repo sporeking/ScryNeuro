@@ -475,10 +475,10 @@ pip install gradio
 ### Run
 
 ```bash
-python python/web_ui/app_gradio.py
-
-# Canonical package path
 PYTHONPATH=python python -m scryer_agent.web_ui.app_gradio
+
+# Legacy launcher shim still supported
+python python/web_ui/app_gradio.py
 ```
 
 Then open: `http://127.0.0.1:7860`

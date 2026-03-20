@@ -9,7 +9,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "python"))
 
 
 def _tool_runtime_module():
-    return importlib.import_module("scryer_tool_runtime")
+    return importlib.import_module("scryer_agent.tool_runtime")
 
 
 def test_builtin_tool_catalog_excludes_removed_tools() -> None:
