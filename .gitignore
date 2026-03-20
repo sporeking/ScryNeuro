@@ -1,12 +1,14 @@
 # Build artifacts
 /data/
-/docs/
+/test_docs/
 /target/
 /checkpoints/
 /reports/
 *.pt
 /libscryneuro.so
 /libscryneuro.dylib
+.pytest_cache/
+.benchmarks/
 
 # Rust
 Cargo.lock

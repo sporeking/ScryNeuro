@@ -442,6 +442,45 @@ This example demonstrates the fundamental workflow: initialize the bridge, evalu
 
 ---
 
+## Gradio Web UI (Simple Agent Playground)
+
+If you do not want to build a frontend app, use the built-in Python Gradio page for quick testing.
+
+### Install
+
+```bash
+pip install gradio
+```
+
+### Run
+
+```bash
+python python/web_ui/app_gradio.py
+```
+
+Then open: `http://127.0.0.1:7860`
+
+### What it supports
+
+- Select profile/provider/model context
+- Create/replace agent from profile
+- Enable builtin tools
+- Load skills
+- Multi-turn conversation with persistent context (same agent)
+- Run a task (`agent_run`) and render chat history
+- Refresh conversation view from runtime state
+- Reset conversation while keeping the same profile/tools/skills config
+- Inspect trace (`agent_trace`)
+- Close agent (`agent_unload`)
+
+### Low-coupling design
+
+- `python/web_ui/app_gradio.py`: UI only
+- `python/web_ui/agent_adapter.py`: thin adapter layer calling existing runtime APIs
+- Core logic remains in `python/scryer_agent_runtime.py` and related modules
+
+---
+
 ## Core Concepts
 
 ### Handles
