@@ -34,12 +34,10 @@ The agent subsystem reads profile configuration from JSON, with a clean-clone fa
 
 - Preferred local file: `python/scryer_agent/config/agent_profiles.json`
   - This file is intended for local use and is gitignored in this repo.
-- Legacy local file still supported: `python/config/agent_profiles.json`
 - Clean-clone fallback: `python/scryer_agent/config/agent_profiles.example.json`
 - Override with env: `SCRYNEURO_AGENT_CONFIG=/abs/path/to/agent_profiles.json`
 - Optional local override file: `<config>.local.json`
   - Preferred local override path: `python/scryer_agent/config/agent_profiles.local.json`
-  - Legacy override path still supported: `python/config/agent_profiles.local.json`
 
 When a local override exists, it is deep-merged into the base config (nested objects are merged; scalar values are overridden).
 
@@ -48,7 +46,7 @@ This means a fresh clone can still discover profiles such as `default_mock` from
 Runtime precedence for effective settings is:
 
 1. Explicit options passed at agent creation call (highest priority)
-2. Profile fields from the selected config file (prefer `python/scryer_agent/config/agent_profiles.json`, fallback to legacy `python/config/agent_profiles.json`, otherwise use package example config) plus optional `.local.json` override
+2. Profile fields from the selected config file (`python/scryer_agent/config/agent_profiles.json`, otherwise package example config) plus optional `.local.json` override
 3. Environment / `.env` fallback (for OpenAI: `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL` when model is `auto`)
 4. Hard defaults (`provider=openai`, `model=auto`, then `OPENAI_MODEL` fallback to `gpt-4o-mini`)
 
@@ -64,7 +62,7 @@ cp .env.example .env
 
 The example config intentionally omits real API keys. If a profile leaves `api_key` empty, the runtime will fall back to environment variables or `.env` during agent creation.
 
-The agent package now lives under `python/scryer_agent/`. Legacy paths under `python/config/` and root-level compatibility modules remain supported during the migration period.
+The agent package now lives under `python/scryer_agent/`.
 
 ---
 
@@ -476,9 +474,6 @@ pip install gradio
 
 ```bash
 PYTHONPATH=python python -m scryer_agent.web_ui.app_gradio
-
-# Legacy launcher shim still supported
-python python/web_ui/app_gradio.py
 ```
 
 Then open: `http://127.0.0.1:7860`
@@ -500,8 +495,7 @@ Then open: `http://127.0.0.1:7860`
 
 - `python/scryer_agent/web_ui/app_gradio.py`: canonical UI module
 - `python/scryer_agent/web_ui/agent_adapter.py`: canonical adapter layer
-- `python/web_ui/app_gradio.py`: legacy launcher shim for compatibility
-- Core logic now lives in `python/scryer_agent/` with legacy root-level shim modules preserved
+- Core logic now lives in `python/scryer_agent/`
 
 ---
 

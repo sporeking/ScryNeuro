@@ -20,14 +20,6 @@ def _agent_runtime_module():
     return importlib.import_module("scryer_agent.runtime")
 
 
-def _legacy_agent_config_module():
-    return importlib.import_module("scryer_agent_config")
-
-
-def _legacy_agent_runtime_module():
-    return importlib.import_module("scryer_agent_runtime")
-
-
 def test_example_config_has_schema_version_and_no_embedded_api_keys() -> None:
     example_path = (
         pathlib.Path(__file__).resolve().parents[1]
@@ -68,7 +60,6 @@ def test_list_profiles_falls_back_to_example_when_local_config_is_missing(
     )
 
     monkeypatch.setattr(agent_config, "_CONFIG_DIR", config_dir)
-    monkeypatch.setattr(agent_config, "_LEGACY_CONFIG_DIR", tmp_path / "legacy_config")
 
     rows = agent_config.list_profiles()
 
@@ -150,8 +141,3 @@ def test_agent_create_from_profile_uses_dotenv_openai_fallback(
         setattr(agent_runtime, "_DOTENV_LOADED", False)
         for key in ("OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_MODEL"):
             os.environ.pop(key, None)
-
-
-def test_legacy_shim_modules_alias_package_modules() -> None:
-    assert _legacy_agent_config_module() is _agent_config_module()
-    assert _legacy_agent_runtime_module() is _agent_runtime_module()

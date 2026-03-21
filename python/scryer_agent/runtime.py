@@ -21,10 +21,7 @@ _DOTENV_LOADED = False
 _PACKAGE_DIR = pathlib.Path(__file__).resolve().parent
 _PYTHON_DIR = _PACKAGE_DIR.parent
 _REPO_ROOT = _PYTHON_DIR.parent
-_DEFAULT_SKILLS_DIR_CANDIDATES = [
-    _PACKAGE_DIR / "skills",
-    _PYTHON_DIR / "skills",
-]
+_DEFAULT_SKILLS_DIR = _PACKAGE_DIR / "skills"
 
 
 def _resolve_skills_dir(skills_dir: str | None = None) -> pathlib.Path:
@@ -35,21 +32,11 @@ def _resolve_skills_dir(skills_dir: str | None = None) -> pathlib.Path:
             candidate = (_REPO_ROOT / candidate).resolve()
         else:
             candidate = candidate.resolve()
-        normalized = raw.replace("\\", "/")
         if candidate.is_dir():
             return candidate
-        if normalized in {"python/skills", "python/scryer_agent/skills"}:
-            for fallback in _DEFAULT_SKILLS_DIR_CANDIDATES:
-                resolved = fallback.resolve()
-                if resolved.is_dir():
-                    return resolved
         return candidate
 
-    for candidate in _DEFAULT_SKILLS_DIR_CANDIDATES:
-        resolved = candidate.resolve()
-        if resolved.is_dir():
-            return resolved
-    return _DEFAULT_SKILLS_DIR_CANDIDATES[0].resolve()
+    return _DEFAULT_SKILLS_DIR.resolve()
 
 
 @dataclass

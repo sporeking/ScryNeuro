@@ -7,9 +7,7 @@ from typing import Any
 
 
 _PACKAGE_DIR = pathlib.Path(__file__).resolve().parent
-_PYTHON_DIR = _PACKAGE_DIR.parent
 _CONFIG_DIR = _PACKAGE_DIR / "config"
-_LEGACY_CONFIG_DIR = _PYTHON_DIR / "config"
 _DEFAULT_SCHEMA_VERSION = "1.0"
 
 
@@ -20,9 +18,6 @@ def _default_config_path() -> pathlib.Path:
     primary = (_CONFIG_DIR / "agent_profiles.json").resolve()
     if primary.is_file():
         return primary
-    legacy_primary = (_LEGACY_CONFIG_DIR / "agent_profiles.json").resolve()
-    if legacy_primary.is_file():
-        return legacy_primary
     return (_CONFIG_DIR / "agent_profiles.example.json").resolve()
 
 
@@ -33,9 +28,6 @@ def _default_local_override_path(config_path: pathlib.Path) -> pathlib.Path:
     preferred = (_CONFIG_DIR / "agent_profiles.local.json").resolve()
     if preferred.is_file():
         return preferred
-    legacy = (_LEGACY_CONFIG_DIR / "agent_profiles.local.json").resolve()
-    if legacy.is_file():
-        return legacy
     return preferred
 
 
@@ -52,12 +44,11 @@ def _load_config() -> dict[str, Any]:
     path = _default_config_path()
     if not path.is_file():
         primary = (_CONFIG_DIR / "agent_profiles.json").resolve()
-        legacy_primary = (_LEGACY_CONFIG_DIR / "agent_profiles.json").resolve()
         example = (_CONFIG_DIR / "agent_profiles.example.json").resolve()
         raise FileNotFoundError(
             "Agent config file not found. "
-            f"Checked package config '{primary}', legacy config '{legacy_primary}', and example config '{example}'. "
-            "Create a local python/scryer_agent/config/agent_profiles.json or python/config/agent_profiles.json, or set "
+            f"Checked package config '{primary}' and example config '{example}'. "
+            "Create a local python/scryer_agent/config/agent_profiles.json, or set "
             "SCRYNEURO_AGENT_CONFIG=/abs/path/to/agent_profiles.json."
         )
     raw = _load_json_object(path, "Agent config")
