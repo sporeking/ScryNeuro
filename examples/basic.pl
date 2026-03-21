@@ -1,17 +1,3 @@
-%% ===========================================================================
-%% ScryNeuro Basic Example
-%% ===========================================================================
-%%
-%% Demonstrates basic Python interop from Scryer Prolog.
-%%
-%% Run:
-%%   $ LD_LIBRARY_PATH=. scryer-prolog examples/basic.pl
-%%
-%% Prerequisites:
-%%   - Build: cargo build --release
-%%   - Copy: cp target/release/libscryneuro.so ./     # Linux
-%%   -       cp target/release/libscryneuro.dylib ./  # macOS
-
 :- op(700, xfx, :=).
 :- use_module('../prolog/scryer_py').
 
@@ -44,6 +30,20 @@ example_arithmetic :-
 %% ---------------------------------------------------------------------------
 %% Example 2: Working with Python modules
 %% ---------------------------------------------------------------------------
+
+example_multiline :-
+    py_init,
+    format("=== Multiline Python Code ===~n", []),
+
+    %% ISO Prolog backslash line continuation lets py_exec/1 receive
+    %% multi-line Python directly without going through py_exec_lines/1.
+    Code = "\
+def greet(name):\n\
+    return f'Hello, {name}!'\n\
+greeting = greet('Prolog')\n\
+print(greeting)",
+    format("Code to execute:~n~s~n", [Code]),
+    py_exec(Code).
 
 example_modules :-
     py_init,
@@ -168,6 +168,8 @@ example_raii :-
     run_example("example_errors", example_errors),
     nl,
     run_example("example_raii", example_raii),
+    nl,
+    run_example("example_multiline", example_multiline),
     nl,
     format("=== All basic examples complete ===~n", []),
     py_finalize

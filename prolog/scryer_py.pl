@@ -299,15 +299,17 @@ py_eval(Code, Handle) :-
     check_handle(Handle, py_eval/2).
 
 %% py_exec(+Code): Execute Python statements.
+%% Code may be multi-line; see examples/basic.pl for the continued
+%% string-literal form that works directly with py_exec/1.
 %%   ?- py_exec("import numpy as np").
 py_exec(Code) :-
     ffi:'spy_exec'(Code, Status),
     check_status(Status, py_exec/1).
 
-%% py_exec_lines(+Lines): Execute multi-line Python code.
+%% py_exec_lines(+Lines): Compatibility helper for multi-line Python code.
 %% Takes a list of strings (one per line), joins them with newlines,
-%% and passes to py_exec. This is needed because Scryer Prolog does
-%% not support \n escape sequences in double-quoted strings.
+%% and passes the result to py_exec/1. This predicate is redundant
+%% because py_exec/1 can already execute multi-line code directly.
 %%   ?- py_exec_lines(["class Foo:", "    def bar(self):", "        return 42"]).
 py_exec_lines(Lines) :-
     char_code(NL, 10),

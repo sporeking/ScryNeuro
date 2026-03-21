@@ -595,7 +595,7 @@ catch(
 - `py_handle_count/1`：诊断工具，返回当前活跃的句柄数量。
 
 ### Scryer Prolog 中的字符串
-在 Scryer Prolog 中，用双引号包裹的字符串（比如 `"hello"`）实际上是由字符组成的**列表**（char lists）。而像 `hello` 这样没有引号的则是**原子（Atoms）**，它们是符号常量，并不是字符串。这一区别在后续的 `:=` 运算符分发机制中非常关键。另外，Scryer Prolog 的双引号字符串不支持 `\n` 转义，因此我们专门提供了 `py_exec_lines/1` 来执行多行 Python 代码。
+在 Scryer Prolog 中，用双引号包裹的字符串（比如 `"hello"`）实际上是由字符组成的**列表**（char lists）。而像 `hello` 这样没有引号的则是**原子（Atoms）**，它们是符号常量，并不是字符串。这一区别在后续的 `:=` 运算符分发机制中非常关键。对于多行 Python 代码，可以像 `examples/basic.pl` 里的 `example_multiline/0` 那样，直接把 `py_exec/1` 的参数写成 ISO Prolog 的反斜杠续行字符串。`py_exec_lines/1` 仍然保留为便捷封装，但它本质上只是把多行拼接后再调用 `py_exec/1`，因此在功能上是冗余的。
 
 ### TLS 字符串缓冲区
 在 Rust 层，像 `py_to_str` 或 `py_to_json` 这类返回字符串的 FFI 函数，会把结果先写入一个“线程局部存储”（TLS）缓冲区中。Prolog 层会立即将该缓冲区的内容复制为 Prolog 的字符列表。这种底层的内存处理对用户是完全透明的。
@@ -656,13 +656,24 @@ main_cross_project :-
 | Handle | 整数   | 指向计算结果对象的句柄 |
 
 #### `py_exec(+Code)`
-执行一段 Python **语句 (statement)**。适用于没有返回值的代码，例如 `import`、变量赋值或类/函数定义。
+执行一段 Python **语句 (statement)**。适用于没有返回值的代码，例如 `import`、变量赋值或类/函数定义。`Code` 也可以直接是多行代码。
 | 参数 | 类型   | 说明                 |
 | ---- | ------ | -------------------- |
 | Code | 字符串 | 要执行的 Python 语句 |
 
+多行 Python 推荐直接写成 ISO Prolog 的反斜杠续行字符串：
+
+```prolog
+py_exec("\
+class Greeter:\n\
+    def __init__(self, name):\n\
+        self.name = name\n\
+    def greet(self):\n\
+        return f'Hello, {self.name}!'").
+```
+
 #### `py_exec_lines(+Lines)`
-接收一个字符串列表，用换行符拼接后传给 `py_exec`。这是执行多行代码的首选方式。
+兼容性辅助谓词。它接收一个字符串列表，用换行符拼接后传给 `py_exec/1`。由于 `py_exec/1` 已经可以直接执行多行 Python 代码，所以它在功能上是冗余的。
 
 > **避坑指南**：`py_eval` 用于计算有返回值的表达式，`py_exec` 用于执行无返回值的语句。对 `import math` 使用 `py_eval` 会导致报错。
 
@@ -681,14 +692,13 @@ eval_exec_demo :-
     %% py_exec: 执行语句
     py_exec("import math"),
 
-    %% py_exec_lines: 执行多行代码
-    py_exec_lines([
-        "class Greeter:",
-        "    def __init__(self, name):",
-        "        self.name = name",
-        "    def greet(self):",
-        "        return f'Hello, {self.name}!'"
-    ]),
+    %% py_exec: 直接执行多行代码
+    py_exec("\
+class Greeter:\n\
+    def __init__(self, name):\n\
+        self.name = name\n\
+    def greet(self):\n\
+        return f'Hello, {self.name}!'"),
 
     %% 使用刚才定义的类
     py_eval("Greeter('World')", G),
@@ -728,12 +738,11 @@ eval_exec_demo :-
 
 attr_demo :-
     py_init,
-    py_exec_lines([
-        "class Point:",
-        "    def __init__(self, x, y):",
-        "        self.x = x",
-        "        self.y = y"
-    ]),
+    py_exec("\
+class Point:\n\
+    def __init__(self, x, y):\n\
+        self.x = x\n\
+        self.y = y"),
     py_eval("Point(3, 4)", P),
 
     %% 获取属性
@@ -1078,10 +1087,9 @@ R := py_invoke(Fn, Arg).
 
 batch_process(PrologList, Results) :-
     py_init,
-    py_exec_lines([
-        "def process_batch(items):",
-        "    return [x ** 2 + 1 for x in items]"
-    ]),
+    py_exec("\
+def process_batch(items):\n\
+    return [x ** 2 + 1 for x in items]"),
     py_list_new(PyList),
     maplist(add_to_list(PyList), PrologList),
     

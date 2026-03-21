@@ -544,7 +544,7 @@ Every handle represents a resource in the Rust/Python layers. You must free hand
 - `py_handle_count/1`: Diagnostic tool that returns the number of currently active handles.
 
 ### Strings in Scryer Prolog
-Scryer Prolog represents double-quoted strings like `"hello"` as lists of characters (char lists). Atoms like `hello` are symbolic constants, not strings. This distinction is critical for the `:=` operator's dispatch mechanism. Note that Scryer Prolog does not support `\n` escapes in double-quoted strings, which is why `py_exec_lines/1` is provided for multi-line Python code.
+Scryer Prolog represents double-quoted strings like `"hello"` as lists of characters (char lists). Atoms like `hello` are symbolic constants, not strings. This distinction is critical for the `:=` operator's dispatch mechanism. For multi-line Python, you can pass a continued string literal directly to `py_exec/1` using ISO Prolog backslash line continuation, as shown in `examples/basic.pl`. `py_exec_lines/1` is still available as a convenience wrapper, but it is functionally redundant because it only joins lines before calling `py_exec/1`.
 
 ### TLS String Buffer
 String-returning FFI functions, such as `py_to_str` or `py_to_json`, write their results into a thread-local storage (TLS) buffer on the Rust side. The Prolog layer immediately copies the contents of this buffer into a Prolog char list. This management is transparent to the user.
@@ -608,14 +608,25 @@ Evaluates a Python **expression** and returns a handle to the result. An express
 | Handle | Integer | Handle to the resulting object |
 
 #### py_exec(+Code)
-Executes Python **statements**. Use this for code that does not return a value, such as imports, variable assignments, or class definitions.
+Executes Python **statements**. Use this for code that does not return a value, such as imports, variable assignments, or class definitions. `Code` may be multi-line.
 
 | Parameter | Type | Description |
 |---|---|---|
 | Code | String | Python statements to execute |
 
+For multi-line Python, write the string with ISO Prolog backslash line continuation:
+
+```prolog
+py_exec("\
+class Greeter:\n\
+    def __init__(self, name):\n\
+        self.name = name\n\
+    def greet(self):\n\
+        return f'Hello, {self.name}!'").
+```
+
 #### py_exec_lines(+Lines)
-Takes a list of strings and joins them with newlines before passing the result to `py_exec`. This is the preferred way to execute multi-line Python code because Scryer Prolog doesn't support `\n` in strings.
+Compatibility helper that takes a list of strings, joins them with newlines, and forwards the result to `py_exec/1`. It is redundant because `py_exec/1` can already execute multi-line Python code directly.
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -645,14 +656,13 @@ eval_exec_demo :-
     format("Pi = ~f~n", [Pi]),
     py_free(PiH),
 
-    %% py_exec_lines: multi-line Python code
-    py_exec_lines([
-        "class Greeter:",
-        "    def __init__(self, name):",
-        "        self.name = name",
-        "    def greet(self):",
-        "        return f'Hello, {self.name}!'"
-    ]),
+    %% py_exec: multi-line Python code
+    py_exec("\
+class Greeter:\n\
+    def __init__(self, name):\n\
+        self.name = name\n\
+    def greet(self):\n\
+        return f'Hello, {self.name}!'"),
 
     %% Use the class we just defined
     py_eval("Greeter('World')", G),
@@ -716,12 +726,11 @@ Sets the value of an attribute on a Python object.
 
 attr_demo :-
     py_init,
-    py_exec_lines([
-        "class Point:",
-        "    def __init__(self, x, y):",
-        "        self.x = x",
-        "        self.y = y"
-    ]),
+    py_exec("\
+class Point:\n\
+    def __init__(self, x, y):\n\
+        self.x = x\n\
+        self.y = y"),
     py_eval("Point(3, 4)", P),
 
     %% Get attributes
@@ -1530,10 +1539,9 @@ For all other operations, use the explicit predicate form.
 batch_process(PrologList, Results) :-
     py_init,
     %% Define a Python function
-    py_exec_lines([
-        "def process_batch(items):",
-        "    return [x ** 2 + 1 for x in items]"
-    ]),
+    py_exec("\
+def process_batch(items):\n\
+    return [x ** 2 + 1 for x in items]"),
     %% Build a Python list from Prolog values
     py_list_new(PyList),
     maplist(add_to_list(PyList), PrologList),

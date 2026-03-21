@@ -36,7 +36,8 @@ example_numpy_dot :-
     py_import("numpy", NP),
 
     %% Create two ndarrays using py_exec + eval
-    %% Note: Scryer doesn't support \n escapes, so we pass multiple lines using py_exec_lines/1
+    %% py_exec_lines/1 is only a convenience wrapper here; examples/basic.pl
+    %% shows the same multi-line code can be passed directly to py_exec/1.
     py_exec_lines([
         "import numpy as np",
         "a = np.array([1.0, 2.0, 3.0, 4.0])",
