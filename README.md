@@ -20,11 +20,11 @@ Inspired by [Jurassic.pl](https://github.com/haldai/Jurassic.pl) (SWI-Prolog ↔
 
 NN, LLM, and RL functionality are **opt-in plugins** — separate modules loaded via `use_module`. The core (`scryer_py.pl`) only provides `py_*` predicates and the `:=` operator.
 
-| Plugin | Module file | Predicates |
-|---|---|---|
-| Neural Networks | `prolog/scryer_nn.pl` | `nn_load/3,4`, `nn_predict/3,4` |
-| Large Language Models | `prolog/scryer_llm.pl` | `llm_load/3,4`, `llm_generate/3,4` |
-| Reinforcement Learning | `prolog/scryer_rl.pl` | `rl_create/4`, `rl_load/3,4`, `rl_save/2`, `rl_action/3,4`, `rl_train/2,3`, `rl_evaluate/3`, `rl_info/2` |
+| Plugin                 | Module file            | Predicates                                                                                               |
+| ---------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------- |
+| Neural Networks        | `prolog/scryer_nn.pl`  | `nn_load/3,4`, `nn_predict/3,4`                                                                          |
+| Large Language Models  | `prolog/scryer_llm.pl` | `llm_load/3,4`, `llm_generate/3,4`                                                                       |
+| Reinforcement Learning | `prolog/scryer_rl.pl`  | `rl_create/4`, `rl_load/3,4`, `rl_save/2`, `rl_action/3,4`, `rl_train/2,3`, `rl_evaluate/3`, `rl_info/2` |
 
 Each plugin has a matching Python runtime module (`python/scryer_*_runtime.py`) that is loaded lazily on first use.
 
@@ -70,11 +70,11 @@ The agent package now lives under `python/scryer_agent/`.
 
 ### System Requirements
 
-| Component | Version | Notes |
-|---|---|---|
-| **Rust** | stable ≥ 1.70 | `rustup` recommended |
-| **Python** | 3.10 – 3.13 | with shared library (`libpython3.x.so` / `.dylib`) |
-| **Scryer Prolog** | latest git | must support `library(ffi)` |
+| Component         | Version       | Notes                                              |
+| ----------------- | ------------- | -------------------------------------------------- |
+| **Rust**          | stable ≥ 1.70 | `rustup` recommended                               |
+| **Python**        | 3.10 – 3.13   | with shared library (`libpython3.x.so` / `.dylib`) |
+| **Scryer Prolog** | latest git    | must support `library(ffi)`                        |
 
 > Note on Python 3.14+: current `pyo3 = 0.23.x` may reject Python 3.14 by default. Our build scripts now auto-enable `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` when Python >= 3.14 is detected.
 
@@ -307,10 +307,10 @@ Then run: `./run.sh main.pl`
 
 ScryNeuro loads **two shared libraries** at runtime:
 
-| Library | What it is | Where it lives |
-|---|---|---|
+| Library           | What it is               | Where it lives                      |
+| ----------------- | ------------------------ | ----------------------------------- |
 | `libscryneuro.so` | The Prolog↔Python bridge | ScryNeuro project root (after `cp`) |
-| `libpython3.x.so` | Python’s shared library | Varies by system and environment |
+| `libpython3.x.so` | Python’s shared library  | Varies by system and environment    |
 
 The Linux dynamic linker (`ld.so`) searches for `.so` files in this order:
 1. `LD_LIBRARY_PATH` (user-set)
@@ -321,15 +321,15 @@ If **both** libraries are in those default paths, you don’t need `LD_LIBRARY_P
 
 Whether you also need to add `libpython`’s path depends on your system:
 
-| Environment | `libpython` location | `LD_LIBRARY_PATH=.` sufficient? | Why |
-|---|---|---|---|
-| Arch Linux + system `python` package | `/usr/lib/` | ✅ Yes | `/usr/lib/` is a default search path |
-| Arch Linux + conda (but system `python` pkg installed) | `/usr/lib/` (system pkg provides it) | ✅ Yes | Even with conda active, the system `libpython.so` in `/usr/lib/` is found by the linker |
-| Debian/Ubuntu + `libpython3-dev` | `/usr/lib/x86_64-linux-gnu/` | ✅ Yes | Multiarch path is in `ld.so.conf` |
-| Debian/Ubuntu + conda | `~/miniconda3/envs/.../lib/` | ❌ No | Conda’s lib dir is not in any default search path |
-| Fedora + conda | `~/miniconda3/envs/.../lib/` | ❌ No | Same reason |
-| Any distro + `pyenv` (with `--enable-shared`) | `~/.pyenv/versions/.../lib/` | ❌ No | Not in default path |
-| Using `run.sh` wrapper | Any | ✅ (handled by script) | Script sets `LD_LIBRARY_PATH` automatically |
+| Environment                                            | `libpython` location                 | `LD_LIBRARY_PATH=.` sufficient? | Why                                                                                     |
+| ------------------------------------------------------ | ------------------------------------ | ------------------------------- | --------------------------------------------------------------------------------------- |
+| Arch Linux + system `python` package                   | `/usr/lib/`                          | ✅ Yes                           | `/usr/lib/` is a default search path                                                    |
+| Arch Linux + conda (but system `python` pkg installed) | `/usr/lib/` (system pkg provides it) | ✅ Yes                           | Even with conda active, the system `libpython.so` in `/usr/lib/` is found by the linker |
+| Debian/Ubuntu + `libpython3-dev`                       | `/usr/lib/x86_64-linux-gnu/`         | ✅ Yes                           | Multiarch path is in `ld.so.conf`                                                       |
+| Debian/Ubuntu + conda                                  | `~/miniconda3/envs/.../lib/`         | ❌ No                            | Conda’s lib dir is not in any default search path                                       |
+| Fedora + conda                                         | `~/miniconda3/envs/.../lib/`         | ❌ No                            | Same reason                                                                             |
+| Any distro + `pyenv` (with `--enable-shared`)          | `~/.pyenv/versions/.../lib/`         | ❌ No                            | Not in default path                                                                     |
+| Using `run.sh` wrapper                                 | Any                                  | ✅ (handled by script)           | Script sets `LD_LIBRARY_PATH` automatically                                             |
 
 **Key insight**: There are two separate dependency layers:
 1. **OS dynamic linker** — finds `.so` files (this is what `LD_LIBRARY_PATH` controls)
@@ -562,16 +562,16 @@ Initialize the Python interpreter with the default library path `./libscryneuro.
 #### py_init/1
 Initialize the interpreter with a custom path to the shared library. This is also idempotent.
 
-| Parameter | Type | Description |
-|---|---|---|
-| Path | String | Path to the shared library file |
+| Parameter | Type   | Description                     |
+| --------- | ------ | ------------------------------- |
+| Path      | String | Path to the shared library file |
 
 #### py_init_home/1
 Initialize the interpreter using an explicit ScryNeuro root directory. The shared library is loaded from `Home/libscryneuro.so` (or `.dylib` on macOS), and `Home/python` is added to `sys.path`. Use this as an alternative to the `SCRYNEURO_HOME` environment variable.
 
-| Parameter | Type | Description |
-|---|---|---|
-| Home | String | Absolute path to the ScryNeuro root directory |
+| Parameter | Type   | Description                                   |
+| --------- | ------ | --------------------------------------------- |
+| Home      | String | Absolute path to the ScryNeuro root directory |
 
 #### py_finalize/0
 Shuts down the Python interpreter, clears the handle registry, and retracts the initialization flag. It is safe to call even if the interpreter wasn't initialized.
@@ -602,17 +602,17 @@ Execute Python code directly from Prolog.
 #### py_eval(+Code, -Handle)
 Evaluates a Python **expression** and returns a handle to the result. An expression must produce a value (e.g., `1 + 1`, `len([1,2,3])`).
 
-| Parameter | Type | Description |
-|---|---|---|
-| Code | String | Python expression to evaluate |
-| Handle | Integer | Handle to the resulting object |
+| Parameter | Type    | Description                    |
+| --------- | ------- | ------------------------------ |
+| Code      | String  | Python expression to evaluate  |
+| Handle    | Integer | Handle to the resulting object |
 
 #### py_exec(+Code)
 Executes Python **statements**. Use this for code that does not return a value, such as imports, variable assignments, or class definitions. `Code` may be multi-line.
 
-| Parameter | Type | Description |
-|---|---|---|
-| Code | String | Python statements to execute |
+| Parameter | Type   | Description                  |
+| --------- | ------ | ---------------------------- |
+| Code      | String | Python statements to execute |
 
 For multi-line Python, write the string with ISO Prolog backslash line continuation:
 
@@ -628,9 +628,9 @@ class Greeter:\n\
 #### py_exec_lines(+Lines)
 Compatibility helper that takes a list of strings, joins them with newlines, and forwards the result to `py_exec/1`. It is redundant because `py_exec/1` can already execute multi-line Python code directly.
 
-| Parameter | Type | Description |
-|---|---|---|
-| Lines | List of Strings | Lines of Python code |
+| Parameter | Type            | Description          |
+| --------- | --------------- | -------------------- |
+| Lines     | List of Strings | Lines of Python code |
 
 **Pitfall**: `py_eval` is for expressions that return a value. `py_exec` is for statements. Using `py_eval` on a statement like `import math` will result in an error.
 
@@ -679,10 +679,10 @@ Import Python modules to access their functionality.
 #### py_import(+ModuleName, -Handle)
 Imports a Python module by name and returns a handle to the module object.
 
-| Parameter | Type | Description |
-|---|---|---|
-| ModuleName | String | Module name (e.g., "math", "numpy") |
-| Handle | Integer | Handle to the module object |
+| Parameter  | Type    | Description                         |
+| ---------- | ------- | ----------------------------------- |
+| ModuleName | String  | Module name (e.g., "math", "numpy") |
+| Handle     | Integer | Handle to the module object         |
 
 **Example:**
 ```prolog
@@ -705,20 +705,20 @@ Read and write attributes of Python objects.
 #### py_getattr(+Obj, +AttrName, -Value)
 Gets the value of an attribute from a Python object.
 
-| Parameter | Type | Description |
-|---|---|---|
-| Obj | Handle | The Python object |
-| AttrName | String | Attribute name |
-| Value | Handle | Handle to the attribute value |
+| Parameter | Type   | Description                   |
+| --------- | ------ | ----------------------------- |
+| Obj       | Handle | The Python object             |
+| AttrName  | String | Attribute name                |
+| Value     | Handle | Handle to the attribute value |
 
 #### py_setattr(+Obj, +AttrName, +Value)
 Sets the value of an attribute on a Python object.
 
-| Parameter | Type | Description |
-|---|---|---|
-| Obj | Handle | The Python object |
-| AttrName | String | Attribute name |
-| Value | Handle | Handle to the new value |
+| Parameter | Type   | Description             |
+| --------- | ------ | ----------------------- |
+| Obj       | Handle | The Python object       |
+| AttrName  | String | Attribute name          |
+| Value     | Handle | Handle to the new value |
 
 **Example:**
 ```prolog
@@ -759,12 +759,12 @@ Invoke methods on Python objects.
 #### py_call(+Obj, +Method, +Arg1, +Arg2, +Arg3, -Result)
 Calls a method on an object with 0 to 3 arguments. The last argument is always the output handle.
 
-| Parameter | Type | Description |
-|---|---|---|
-| Obj | Handle | The Python object |
-| Method | String | Method name (must be a string/char list, NOT an atom) |
-| ArgX | Handle | Argument handles |
-| Result | Handle | Handle to the return value |
+| Parameter | Type   | Description                                           |
+| --------- | ------ | ----------------------------------------------------- |
+| Obj       | Handle | The Python object                                     |
+| Method    | String | Method name (must be a string/char list, NOT an atom) |
+| ArgX      | Handle | Argument handles                                      |
+| Result    | Handle | Handle to the return value                            |
 
 #### py_calln(+Obj, +Method, +Args, -Result)
 Calls a method with N arguments. `Args` can be either a Prolog list of handles `[H1, H2, ...]` or a handle to an existing Python list or sequence.
@@ -811,11 +811,11 @@ Call functions, lambdas, or class constructors directly.
 #### py_invoken(+Callable, +Args, -Result)
 Invokes a callable object with 0 to N arguments. Same rules apply for `Args` in `py_invoken` as in `py_calln`.
 
-| Parameter | Type | Description |
-|---|---|---|
-| Callable | Handle | Any Python callable (function, class, lambda) |
-| ArgX | Handle | Argument handles |
-| Result | Handle | Handle to the return value |
+| Parameter | Type   | Description                                   |
+| --------- | ------ | --------------------------------------------- |
+| Callable  | Handle | Any Python callable (function, class, lambda) |
+| ArgX      | Handle | Argument handles                              |
+| Result    | Handle | Handle to the return value                    |
 
 **Key Difference**: `py_call` calls a method on an object (`obj.method(args)`), whereas `py_invoke` calls the object itself (`callable(args)`). Use `py_invoke` for functions, lambdas, and constructors.
 
@@ -850,97 +850,97 @@ invoke_demo :-
 ### Type Conversion
 Convert data between Prolog and Python types.
 
-| Predicate | Direction | Prolog Type | Python Type |
-|---|---|---|---|
-| `py_to_str/2` | Py -> Pl | String (char list) | `str(obj)` |
-| `py_to_repr/2` | Py -> Pl | String (char list) | `repr(obj)` |
-| `py_to_int/2` | Py -> Pl | Integer | `int` |
-| `py_to_float/2` | Py -> Pl | Float | `float` |
-| `py_to_bool/2` | Py -> Pl | Atom (`true`/`false`) | `bool` |
-| `py_from_int/2` | Pl -> Py | Integer | `int` |
-| `py_from_float/2` | Pl -> Py | Float | `float` |
-| `py_from_bool/2` | Pl -> Py | Atom (`true`/`false`) | `bool` |
-| `py_from_str/2` | Pl -> Py | String (char list) | `str` |
+| Predicate         | Direction | Prolog Type           | Python Type |
+| ----------------- | --------- | --------------------- | ----------- |
+| `py_to_str/2`     | Py -> Pl  | String (char list)    | `str(obj)`  |
+| `py_to_repr/2`    | Py -> Pl  | String (char list)    | `repr(obj)` |
+| `py_to_int/2`     | Py -> Pl  | Integer               | `int`       |
+| `py_to_float/2`   | Py -> Pl  | Float                 | `float`     |
+| `py_to_bool/2`    | Py -> Pl  | Atom (`true`/`false`) | `bool`      |
+| `py_from_int/2`   | Pl -> Py  | Integer               | `int`       |
+| `py_from_float/2` | Pl -> Py  | Float                 | `float`     |
+| `py_from_bool/2`  | Pl -> Py  | Atom (`true`/`false`) | `bool`      |
+| `py_from_str/2`   | Pl -> Py  | String (char list)    | `str`       |
 
 #### py_to_str(+Handle, -String)
 Converts a Python object to its string representation using Python's `str()` function.
 
-| Parameter | Type | Description |
-|---|---|---|
-| Handle | Handle | Python object to convert |
-| String | String (char list) | The string representation |
+| Parameter | Type               | Description               |
+| --------- | ------------------ | ------------------------- |
+| Handle    | Handle             | Python object to convert  |
+| String    | String (char list) | The string representation |
 
 #### py_to_repr(+Handle, -String)
 Converts a Python object to its repr string using Python's `repr()` function. Useful for debugging, as it shows the object's type and value in an unambiguous format (e.g., strings are shown with quotes: `'hello'`).
 
-| Parameter | Type | Description |
-|---|---|---|
-| Handle | Handle | Python object to convert |
-| String | String (char list) | The repr representation |
+| Parameter | Type               | Description              |
+| --------- | ------------------ | ------------------------ |
+| Handle    | Handle             | Python object to convert |
+| String    | String (char list) | The repr representation  |
 
 #### py_to_int(+Handle, -Value)
 Extracts the integer value from a Python `int` object.
 
-| Parameter | Type | Description |
-|---|---|---|
-| Handle | Handle | Python int object |
-| Value | Integer | The Prolog integer value |
+| Parameter | Type    | Description              |
+| --------- | ------- | ------------------------ |
+| Handle    | Handle  | Python int object        |
+| Value     | Integer | The Prolog integer value |
 
 **Error behavior**: Throws `error(python_error(Msg), py_to_int/2)` on conversion failure.
 
 #### py_to_float(+Handle, -Value)
 Extracts the float value from a Python `float` object.
 
-| Parameter | Type | Description |
-|---|---|---|
-| Handle | Handle | Python float object |
-| Value | Float | The Prolog float value |
+| Parameter | Type   | Description            |
+| --------- | ------ | ---------------------- |
+| Handle    | Handle | Python float object    |
+| Value     | Float  | The Prolog float value |
 
 **Error behavior**: Throws `error(python_error(Msg), py_to_float/2)` on conversion failure.
 
 #### py_to_bool(+Handle, -Value)
 Extracts a boolean value from a Python `bool` object.
 
-| Parameter | Type | Description |
-|---|---|---|
-| Handle | Handle | Python bool object |
-| Value | Atom | `true` or `false` |
+| Parameter | Type   | Description        |
+| --------- | ------ | ------------------ |
+| Handle    | Handle | Python bool object |
+| Value     | Atom   | `true` or `false`  |
 
 **Note**: Returns Prolog atoms `true`/`false`, NOT integers 1/0. Internally, the FFI returns 1 (true), 0 (false), or -1 (error), and the Prolog layer converts these.
 
 #### py_from_int(+Value, -Handle)
 Creates a Python `int` object from a Prolog integer.
 
-| Parameter | Type | Description |
-|---|---|---|
-| Value | Integer | Prolog integer to convert |
-| Handle | Handle | Handle to the new Python int |
+| Parameter | Type    | Description                  |
+| --------- | ------- | ---------------------------- |
+| Value     | Integer | Prolog integer to convert    |
+| Handle    | Handle  | Handle to the new Python int |
 
 #### py_from_float(+Value, -Handle)
 Creates a Python `float` object from a Prolog float.
 
-| Parameter | Type | Description |
-|---|---|---|
-| Value | Float | Prolog float to convert |
-| Handle | Handle | Handle to the new Python float |
+| Parameter | Type   | Description                    |
+| --------- | ------ | ------------------------------ |
+| Value     | Float  | Prolog float to convert        |
+| Handle    | Handle | Handle to the new Python float |
 
 #### py_from_bool(+Value, -Handle)
 Creates a Python `bool` object from a Prolog atom.
 
-| Parameter | Type | Description |
-|---|---|---|
-| Value | Atom | `true` or `false` |
-| Handle | Handle | Handle to the new Python bool |
+| Parameter | Type   | Description                   |
+| --------- | ------ | ----------------------------- |
+| Value     | Atom   | `true` or `false`             |
+| Handle    | Handle | Handle to the new Python bool |
 
 **Note**: Only accepts `true` or `false` atoms. Any other atom or non-atom will cause an error.
 
 #### py_from_str(+Value, -Handle)
 Creates a Python `str` object from a Prolog string (char list).
 
-| Parameter | Type | Description |
-|---|---|---|
-| Value | String (char list) | The Prolog string to convert |
-| Handle | Handle | Handle to the new Python str |
+| Parameter | Type               | Description                  |
+| --------- | ------------------ | ---------------------------- |
+| Value     | String (char list) | The Prolog string to convert |
+| Handle    | Handle             | Handle to the new Python str |
 
 **Pitfalls**:
 - `py_to_int` and `py_to_float` now throw on conversion errors; catch exceptions with `catch/3`.
@@ -1182,35 +1182,35 @@ Predicates for managing and running deep learning models.
 #### nn_load(+Name, +Path, +Options, -Handle)
 Loads a model from a file and registers it under a symbolic name.
 
-| Parameter | Type | Description |
-|---|---|---|
-| Name | Atom | Symbolic identifier for the model |
-| Path | String | Path to the model file |
-| Options | List | `Key=Value` pairs (e.g., `model_type=pytorch`) |
+| Parameter | Type   | Description                                    |
+| --------- | ------ | ---------------------------------------------- |
+| Name      | Atom   | Symbolic identifier for the model              |
+| Path      | String | Path to the model file                         |
+| Options   | List   | `Key=Value` pairs (e.g., `model_type=pytorch`) |
 
 **Common Options for `nn_load`:**
-| Option | Example | Description |
-|---|---|---|
-| `model_type` | `model_type=pytorch` | Framework: `pytorch`, `tensorflow`, `onnx` |
-| `device` | `device=cuda` | Compute device: `cpu`, `cuda`, `cuda:0` |
-| `weights_only` | `weights_only=true` | PyTorch: load weights only (safer) |
+| Option         | Example              | Description                                |
+| -------------- | -------------------- | ------------------------------------------ |
+| `model_type`   | `model_type=pytorch` | Framework: `pytorch`, `tensorflow`, `onnx` |
+| `device`       | `device=cuda`        | Compute device: `cpu`, `cuda`, `cuda:0`    |
+| `weights_only` | `weights_only=true`  | PyTorch: load weights only (safer)         |
 
 #### nn_predict(+Name, +Input, -Output)
 #### nn_predict(+Name, +Input, -Output, +Options)
 Runs inference using a registered model.
 
-| Parameter | Type | Description |
-|---|---|---|
-| Name | Atom | Identifier matching a loaded model |
-| Input | Handle | Input data handle (tensor or array) |
-| Output | Handle | Handle to the inference result |
-| Options | List | `Key=Value` pairs for inference |
+| Parameter | Type   | Description                         |
+| --------- | ------ | ----------------------------------- |
+| Name      | Atom   | Identifier matching a loaded model  |
+| Input     | Handle | Input data handle (tensor or array) |
+| Output    | Handle | Handle to the inference result      |
+| Options   | List   | `Key=Value` pairs for inference     |
 
 **Common Options for `nn_predict`:**
-| Option | Example | Description |
-|---|---|---|
-| `batch_size` | `batch_size=32` | Batch size for inference |
-| `no_grad` | `no_grad=true` | Disable gradient computation |
+| Option       | Example         | Description                  |
+| ------------ | --------------- | ---------------------------- |
+| `batch_size` | `batch_size=32` | Batch size for inference     |
+| `no_grad`    | `no_grad=true`  | Disable gradient computation |
 
 Options are formatted as `[key1=value1, key2=value2, ...]` where keys are atoms. Values can be numbers or atoms (atoms are converted to strings).
 
@@ -1250,20 +1250,20 @@ Predicates for interacting with Large Language Model providers.
 #### llm_load(+Name, +ModelId, +Options, -Handle)
 Configures an LLM provider and model.
 
-| Parameter | Type | Description |
-|---|---|---|
-| Name | Atom | Symbolic identifier |
-| ModelId | String | Model ID (e.g., "gpt-4") |
-| Options | List | Configuration (e.g., `provider=openai`) |
+| Parameter | Type   | Description                             |
+| --------- | ------ | --------------------------------------- |
+| Name      | Atom   | Symbolic identifier                     |
+| ModelId   | String | Model ID (e.g., "gpt-4")                |
+| Options   | List   | Configuration (e.g., `provider=openai`) |
 
 **Common Options for `llm_load`:**
-| Option | Example | Description |
-|---|---|---|
-| `provider` | `provider=openai` | LLM provider |
-| `api_key` | `api_key="sk-..."` | API key (string) |
-| `temperature` | `temperature=0.7` | Sampling temperature |
-| `max_tokens` | `max_tokens=1024` | Maximum response tokens |
-| `base_url` | `base_url="http://..."` | Custom endpoint URL |
+| Option        | Example                 | Description             |
+| ------------- | ----------------------- | ----------------------- |
+| `provider`    | `provider=openai`       | LLM provider            |
+| `api_key`     | `api_key="sk-..."`      | API key (string)        |
+| `temperature` | `temperature=0.7`       | Sampling temperature    |
+| `max_tokens`  | `max_tokens=1024`       | Maximum response tokens |
+| `base_url`    | `base_url="http://..."` | Custom endpoint URL     |
 
 Supported providers include `openai`, `anthropic`, `huggingface`, `ollama`, and `custom`.
 
@@ -1271,19 +1271,19 @@ Supported providers include `openai`, `anthropic`, `huggingface`, `ollama`, and 
 #### llm_generate(+Name, +Prompt, -Response, +Options)
 Generates text based on a prompt.
 
-| Parameter | Type | Description |
-|---|---|---|
-| Name | Atom | Identifier matching a loaded LLM |
-| Prompt | String | Input text prompt |
-| Response | String | Generated text response |
-| Options | List | Parameters for generation |
+| Parameter | Type   | Description                      |
+| --------- | ------ | -------------------------------- |
+| Name      | Atom   | Identifier matching a loaded LLM |
+| Prompt    | String | Input text prompt                |
+| Response  | String | Generated text response          |
+| Options   | List   | Parameters for generation        |
 
 **Common Options for `llm_generate`:**
-| Option | Example | Description |
-|---|---|---|
+| Option        | Example           | Description          |
+| ------------- | ----------------- | -------------------- |
 | `temperature` | `temperature=0.5` | Override temperature |
-| `max_tokens` | `max_tokens=256` | Override max tokens |
-| `stop` | `stop="\n"` | Stop sequence |
+| `max_tokens`  | `max_tokens=256`  | Override max tokens  |
+| `stop`        | `stop="\n"`       | Stop sequence        |
 
 **Example:**
 ```prolog
@@ -1312,86 +1312,86 @@ Predicates for training, evaluating, and using reinforcement learning agents via
 #### rl_create(+Name, +EnvId, +Algorithm, +Options)
 Creates and registers a new RL agent.
 
-| Parameter | Type | Description |
-|---|---|---|
-| Name | Atom | Symbolic identifier for the agent |
-| EnvId | String | Gymnasium environment ID (e.g., `"CartPole-v1"`) |
-| Algorithm | Atom | RL algorithm: `dqn`, `ppo`, `a2c`, `sac`, `td3`, `ddpg`, `pg`, `discrete_sac` |
-| Options | List | `Key=Value` pairs |
+| Parameter | Type   | Description                                                                   |
+| --------- | ------ | ----------------------------------------------------------------------------- |
+| Name      | Atom   | Symbolic identifier for the agent                                             |
+| EnvId     | String | Gymnasium environment ID (e.g., `"CartPole-v1"`)                              |
+| Algorithm | Atom   | RL algorithm: `dqn`, `ppo`, `a2c`, `sac`, `td3`, `ddpg`, `pg`, `discrete_sac` |
+| Options   | List   | `Key=Value` pairs                                                             |
 
 **Common Options for `rl_create`:**
-| Option | Example | Description |
-|---|---|---|
-| `lr` | `lr=0.001` | Learning rate |
-| `gamma` | `gamma=0.99` | Discount factor |
-| `hidden_sizes` | `hidden_sizes=[64,64]` | MLP hidden layer sizes |
-| `n_train_envs` | `n_train_envs=4` | Number of parallel training environments |
-| `buffer_size` | `buffer_size=20000` | Replay buffer capacity |
-| `eps_training` | `eps_training=0.1` | Epsilon for training (DQN) |
+| Option         | Example                | Description                              |
+| -------------- | ---------------------- | ---------------------------------------- |
+| `lr`           | `lr=0.001`             | Learning rate                            |
+| `gamma`        | `gamma=0.99`           | Discount factor                          |
+| `hidden_sizes` | `hidden_sizes=[64,64]` | MLP hidden layer sizes                   |
+| `n_train_envs` | `n_train_envs=4`       | Number of parallel training environments |
+| `buffer_size`  | `buffer_size=20000`    | Replay buffer capacity                   |
+| `eps_training` | `eps_training=0.1`     | Epsilon for training (DQN)               |
 
 #### rl_load(+Name, +Path, +Options)
 #### rl_load(+Name, +Path, +Options, -Handle)
 Loads a saved RL agent checkpoint.
 
-| Parameter | Type | Description |
-|---|---|---|
-| Name | Atom | Symbolic identifier |
-| Path | String | Path to the checkpoint file |
-| Options | List | **Required**: `env_id` (string) and `algorithm` (atom) |
+| Parameter | Type   | Description                                            |
+| --------- | ------ | ------------------------------------------------------ |
+| Name      | Atom   | Symbolic identifier                                    |
+| Path      | String | Path to the checkpoint file                            |
+| Options   | List   | **Required**: `env_id` (string) and `algorithm` (atom) |
 
 #### rl_save(+Name, +Path)
 Saves the current agent policy to a checkpoint file.
 
-| Parameter | Type | Description |
-|---|---|---|
-| Name | Atom | Identifier of a registered agent |
-| Path | String | Output path for the checkpoint |
+| Parameter | Type   | Description                      |
+| --------- | ------ | -------------------------------- |
+| Name      | Atom   | Identifier of a registered agent |
+| Path      | String | Output path for the checkpoint   |
 
 #### rl_action(+Name, +State, -Action)
 #### rl_action(+Name, +State, -Action, +Options)
 Queries the agent policy for an action given an observation.
 
-| Parameter | Type | Description |
-|---|---|---|
-| Name | Atom | Identifier of a registered agent |
-| State | Handle | Handle to the observation tensor |
-| Action | Handle | Handle to the selected action |
-| Options | List | e.g., `[deterministic=true]` |
+| Parameter | Type   | Description                      |
+| --------- | ------ | -------------------------------- |
+| Name      | Atom   | Identifier of a registered agent |
+| State     | Handle | Handle to the observation tensor |
+| Action    | Handle | Handle to the selected action    |
+| Options   | List   | e.g., `[deterministic=true]`     |
 
 #### rl_train(+Name, +Options)
 #### rl_train(+Name, +Options, -Metrics)
 Runs the training loop for the specified agent.
 
-| Parameter | Type | Description |
-|---|---|---|
-| Name | Atom | Identifier of a registered agent |
-| Options | List | Training configuration |
-| Metrics | Handle | Handle to a dict of training metrics |
+| Parameter | Type   | Description                          |
+| --------- | ------ | ------------------------------------ |
+| Name      | Atom   | Identifier of a registered agent     |
+| Options   | List   | Training configuration               |
+| Metrics   | Handle | Handle to a dict of training metrics |
 
 **Common Options for `rl_train`:**
-| Option | Example | Description |
-|---|---|---|
-| `max_epochs` | `max_epochs=10` | Number of training epochs |
-| `epoch_num_steps` | `epoch_num_steps=5000` | Steps per epoch |
-| `batch_size` | `batch_size=64` | Mini-batch size for updates |
-| `test_step_num_episodes` | `test_step_num_episodes=5` | Episodes per test phase |
+| Option                   | Example                    | Description                 |
+| ------------------------ | -------------------------- | --------------------------- |
+| `max_epochs`             | `max_epochs=10`            | Number of training epochs   |
+| `epoch_num_steps`        | `epoch_num_steps=5000`     | Steps per epoch             |
+| `batch_size`             | `batch_size=64`            | Mini-batch size for updates |
+| `test_step_num_episodes` | `test_step_num_episodes=5` | Episodes per test phase     |
 
 #### rl_evaluate(+Name, +NumEpisodes, -Metrics)
 Evaluates the agent over a fixed number of episodes.
 
-| Parameter | Type | Description |
-|---|---|---|
-| Name | Atom | Identifier of a registered agent |
-| NumEpisodes | Integer | Number of evaluation episodes |
-| Metrics | Handle | Handle to evaluation metrics dict |
+| Parameter   | Type    | Description                       |
+| ----------- | ------- | --------------------------------- |
+| Name        | Atom    | Identifier of a registered agent  |
+| NumEpisodes | Integer | Number of evaluation episodes     |
+| Metrics     | Handle  | Handle to evaluation metrics dict |
 
 #### rl_info(+Name, -Info)
 Returns metadata about a registered agent.
 
-| Parameter | Type | Description |
-|---|---|---|
-| Name | Atom | Identifier of a registered agent |
-| Info | Handle | Handle to an info dict |
+| Parameter | Type   | Description                      |
+| --------- | ------ | -------------------------------- |
+| Name      | Atom   | Identifier of a registered agent |
+| Info      | Handle | Handle to an info dict           |
 
 **Example:**
 ```prolog
@@ -1623,14 +1623,14 @@ numpy_demo :-
 
 ## Examples
 
-| File | Description |
-|---|---|
-| `examples/basic.pl` | Arithmetic, modules, collections, error handling, RAII cleanup |
-| `examples/neural.pl` | MNIST classification, neuro-symbolic addition, LLM, RL agents |
-| `examples/numpy_torch.pl` | NumPy vectors/matrices, PyTorch tensors, linear regression, CUDA GPU matmul |
-| `examples/mnist_cnn.pl` | CNN training on MNIST from scratch — model definition, training loop, evaluation, neuro-symbolic inference |
-| `examples/mnist_cnn_v2.pl` | **Module pattern** (recommended): same CNN training, but Python code in a separate `.py` file |
-| `examples/rl_demo.pl` | DQN agent on CartPole-v1 — create, train, evaluate, save, load |
+| File                       | Description                                                                                                |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `examples/basic.pl`        | Arithmetic, modules, collections, error handling, RAII cleanup                                             |
+| `examples/neural.pl`       | MNIST classification, neuro-symbolic addition, LLM, RL agents                                              |
+| `examples/numpy_torch.pl`  | NumPy vectors/matrices, PyTorch tensors, linear regression, CUDA GPU matmul                                |
+| `examples/mnist_cnn.pl`    | CNN training on MNIST from scratch — model definition, training loop, evaluation, neuro-symbolic inference |
+| `examples/mnist_cnn_v2.pl` | **Module pattern** (recommended): same CNN training, but Python code in a separate `.py` file              |
+| `examples/rl_demo.pl`      | DQN agent on CartPole-v1 — create, train, evaluate, save, load                                             |
 
 ```bash
 # Run all examples (robust — works on all systems)
@@ -1674,13 +1674,19 @@ Build-time and runtime Python versions must match. If you switch environments, `
 
 ## Project Structure
 
+Current source tree overview, omitting entries ignored by `.gitignore` such as build artifacts, dataset caches, and local shared-library copies:
+
 ```
 ScryNeuro/
-├── Cargo.toml              # Rust config: pyo3 = "0.23", libc
-├── build.rs                # Python detection + linker config
+├── .env.example            # Example environment configuration
+├── Cargo.toml              # Rust crate configuration
+├── build.rs                # Python detection + linker configuration
+├── build_linux.sh          # Linux build helper
+├── build_macos.sh          # macOS build helper
+├── pytest.ini              # Python test configuration
 ├── src/
 │   ├── lib.rs              # Crate entry point
-│   ├── ffi.rs              # 40 exported extern "C" spy_* functions
+│   ├── ffi.rs              # Exported extern "C" spy_* functions
 │   ├── registry.rs         # Thread-safe handle registry (Mutex<HashMap>)
 │   ├── convert.rs          # Type conversion + TLS string buffer
 │   └── error.rs            # TLS error storage (spy_last_error)
@@ -1688,30 +1694,59 @@ ScryNeuro/
 │   ├── scryer_py.pl        # Core: py_* predicates + := operator
 │   ├── scryer_nn.pl        # Plugin: nn_load, nn_predict
 │   ├── scryer_llm.pl       # Plugin: llm_load, llm_generate
-│   └── scryer_rl.pl        # Plugin: rl_create, rl_train, rl_action, ...
+│   ├── scryer_rl.pl        # Plugin: rl_create, rl_train, rl_action, ...
+│   ├── scryer_agent.pl     # Agent orchestration predicates
+│   ├── scryer_agent_api.pl # Agent-facing API predicates
+│   └── scryer_tool_predicates.pl # Tool registry and helpers
 ├── python/
 │   ├── scryer_py_runtime.py  # Core runtime: device management, TensorUtils
 │   ├── scryer_nn_runtime.py  # NN runtime: model loading + inference
 │   ├── scryer_llm_runtime.py # LLM runtime: provider abstraction
-│   └── scryer_rl_runtime.py  # RL runtime: Tianshou v2.0 agent wrappers
+│   ├── scryer_rl_runtime.py  # RL runtime: Tianshou wrappers
+│   └── scryer_agent/
+│       ├── runtime.py        # Agent session runtime
+│       ├── tool_runtime.py   # Tool execution runtime
+│       ├── tools.py          # Built-in tool implementations
+│       ├── plugins.py        # Plugin loading and registration
+│       ├── config.py         # Agent config loader
+│       ├── config/
+│       │   └── agent_profiles.example.json # Example agent profiles
+│       ├── web_ui/
+│       │   ├── app_gradio.py # Gradio web UI
+│       │   └── agent_adapter.py # UI-to-agent bridge
+│       └── skills/
+│           ├── research-web-markdown/ # Research skill bundle
+│           └── shell-safety-exec/     # Shell execution safety skill
 ├── examples/
 │   ├── basic.pl            # Basic interop demos
-│   ├── neural.pl           # Neuro-symbolic patterns (NN + LLM + RL)
+│   ├── neural.pl           # Neuro-symbolic patterns 
 │   ├── numpy_torch.pl      # NumPy + PyTorch + CUDA demos
 │   ├── mnist_cnn.pl        # CNN MNIST training pipeline (inline Python)
 │   ├── mnist_cnn_v2.pl     # CNN MNIST training pipeline (module pattern)
 │   ├── mnist_cnn_module.py # Python module for mnist_cnn_v2.pl
+│   ├── real_llm_agent.pl   # End-to-end LLM agent example
 │   └── rl_demo.pl          # RL demo: DQN on CartPole-v1
+├── docs/
+│   └── agent_architecture_zh.md # Agent architecture notes (Chinese)
 ├── test/
-│   ├── test_comprehensive.pl   # 24 low-level FFI tests
-│   ├── test_prolog_api.pl      # 19 high-level API tests
-│   ├── test_minimal_api.pl     # 3 core smoke tests
-│   ├── test_rl.pl              # 17 RL plugin tests (scryer_rl.pl)
-│   ├── test_rl.py              # 15 Python RL runtime tests (scryer_rl_runtime.py)
-│   ├── test_smoke.pl           # low-level smoke test
-│   └── test_pi.pl              # quick pi/import sanity test
-└── docs/
-    └── technical_report.md # Detailed Chinese technical report
+│   ├── conftest.py              # Pytest fixtures
+│   ├── test_prolog_api.pl       # High-level Prolog API tests
+│   ├── test_comprehensive.pl    # Low-level FFI coverage tests
+│   ├── test_minimal_api.pl      # Minimal smoke tests
+│   ├── test_smoke.pl            # Basic runtime smoke test
+│   ├── test_pi.pl               # Quick pi/import sanity check
+│   ├── test_rl.pl               # Prolog RL plugin tests
+│   ├── test_rl.py               # Python RL runtime tests
+│   ├── test_agent_demo.pl       # Agent demo integration test
+│   ├── test_agent_mock.pl       # Mock-agent behavior tests
+│   ├── test_agent_profiles.pl   # Agent profile tests
+│   ├── test_agent_session.pl    # Agent session lifecycle tests
+│   ├── test_agent_tool_catalog.py   # Tool catalog tests
+│   ├── test_agent_tools_security.py # Tool security policy tests
+│   ├── test_agent_config_safety.py  # Agent config safety tests
+│   ├── test_agent_log_schema.py     # Agent log schema tests
+│   ├── test_agent_package_migration.py # Agent package migration tests
+│   └── test_webui_defaults.py   # Web UI default config tests
 ```
 
 ## License

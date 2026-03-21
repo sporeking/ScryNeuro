@@ -1218,13 +1218,19 @@ ls $(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")/l
 
 ## 项目结构
 
+下面是当前仓库的源码目录概览，省略了 `.gitignore` 中定义的忽略项，例如构建产物、数据缓存和本地复制出来的共享库文件：
+
 ```
 ScryNeuro/
-├── Cargo.toml              # Rust 配置：pyo3 = "0.23", libc
-├── build.rs                # Python 检测 + 链接器配置
+├── .env.example            # 环境变量示例配置
+├── Cargo.toml              # Rust crate 配置
+├── build.rs                # Python 检测与链接配置
+├── build_linux.sh          # Linux 构建脚本
+├── build_macos.sh          # macOS 构建脚本
+├── pytest.ini              # Python 测试配置
 ├── src/
 │   ├── lib.rs              # Crate 入口
-│   ├── ffi.rs              # 40 个 extern "C" spy_* 导出函数
+│   ├── ffi.rs              # extern "C" spy_* 导出函数
 │   ├── registry.rs         # 线程安全句柄注册表（Mutex<HashMap>）
 │   ├── convert.rs          # 类型转换 + TLS 字符串缓冲区
 │   └── error.rs            # TLS 错误存储（spy_last_error）
@@ -1232,12 +1238,29 @@ ScryNeuro/
 │   ├── scryer_py.pl        # 核心模块：py_* 谓词 + := 运算符
 │   ├── scryer_nn.pl        # 插件：nn_load, nn_predict
 │   ├── scryer_llm.pl       # 插件：llm_load, llm_generate
-│   └── scryer_rl.pl        # 插件：rl_create, rl_train, rl_action, ...
+│   ├── scryer_rl.pl        # 插件：rl_create, rl_train, rl_action, ...
+│   ├── scryer_agent.pl     # Agent 编排相关谓词
+│   ├── scryer_agent_api.pl # 面向 Agent 的 API 谓词
+│   └── scryer_tool_predicates.pl # 工具注册与辅助谓词
 ├── python/
 │   ├── scryer_py_runtime.py  # 核心运行时：设备管理、TensorUtils
 │   ├── scryer_nn_runtime.py  # NN 运行时：模型加载与推理
 │   ├── scryer_llm_runtime.py # LLM 运行时：提供商抽象层
-│   └── scryer_rl_runtime.py  # RL 运行时：Tianshou v2.0 Agent 封装
+│   ├── scryer_rl_runtime.py  # RL 运行时：Tianshou 封装
+│   └── scryer_agent/
+│       ├── runtime.py        # Agent 会话运行时
+│       ├── tool_runtime.py   # 工具执行运行时
+│       ├── tools.py          # 内置工具实现
+│       ├── plugins.py        # 插件加载与注册
+│       ├── config.py         # Agent 配置加载
+│       ├── config/
+│       │   └── agent_profiles.example.json # Agent 配置示例
+│       ├── web_ui/
+│       │   ├── app_gradio.py # Gradio Web UI
+│       │   └── agent_adapter.py # UI 到 Agent 的桥接层
+│       └── skills/
+│           ├── research-web-markdown/ # 研究型技能包
+│           └── shell-safety-exec/     # Shell 安全执行技能包
 ├── examples/
 │   ├── basic.pl            # 基础交互示例
 │   ├── neural.pl           # 神经符号模式示例（NN + LLM + RL）
@@ -1245,15 +1268,29 @@ ScryNeuro/
 │   ├── mnist_cnn.pl        # CNN MNIST 训练流水线（内联 Python）
 │   ├── mnist_cnn_v2.pl     # CNN MNIST 训练流水线（模块模式）
 │   ├── mnist_cnn_module.py # mnist_cnn_v2.pl 的 Python 模块
+│   ├── real_llm_agent.pl   # 端到端 LLM Agent 示例
 │   └── rl_demo.pl          # RL 示例：DQN on CartPole-v1
+├── docs/
+│   └── agent_architecture_zh.md # Agent 架构说明（中文）
 ├── test/
-│   ├── test_comprehensive.pl   # 24 项底层 FFI 测试
-│   ├── test_prolog_api.pl      # 19 项高层 API 测试
-│   ├── test_minimal_api.pl     # 3 项核心冒烟测试
-│   ├── test_rl.pl              # 17 项 RL 插件测试（scryer_rl.pl）
-│   ├── test_rl.py              # 15 项 Python RL 运行时测试（scryer_rl_runtime.py）
-│   ├── test_smoke.pl           # 底层冒烟测试
-│   └── test_pi.pl              # 快速 pi/import 健康检查
+│   ├── conftest.py              # Pytest 夹具
+│   ├── test_prolog_api.pl       # 高层 Prolog API 测试
+│   ├── test_comprehensive.pl    # 底层 FFI 覆盖测试
+│   ├── test_minimal_api.pl      # 最小冒烟测试
+│   ├── test_smoke.pl            # 基础运行时冒烟测试
+│   ├── test_pi.pl               # 快速 pi/import 健康检查
+│   ├── test_rl.pl               # Prolog RL 插件测试
+│   ├── test_rl.py               # Python RL 运行时测试
+│   ├── test_agent_demo.pl       # Agent 示例集成测试
+│   ├── test_agent_mock.pl       # Mock Agent 行为测试
+│   ├── test_agent_profiles.pl   # Agent 配置档测试
+│   ├── test_agent_session.pl    # Agent 会话生命周期测试
+│   ├── test_agent_tool_catalog.py   # 工具目录测试
+│   ├── test_agent_tools_security.py # 工具安全策略测试
+│   ├── test_agent_config_safety.py  # Agent 配置安全测试
+│   ├── test_agent_log_schema.py     # Agent 日志结构测试
+│   ├── test_agent_package_migration.py # Agent 包迁移测试
+│   └── test_webui_defaults.py   # Web UI 默认配置测试
 ```
 
 ## 开源协议
