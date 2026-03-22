@@ -4,6 +4,8 @@ ScryNeuro is a high-performance bridge between **Scryer Prolog** and **Python**,
 
 Inspired by [Jurassic.pl](https://github.com/haldai/Jurassic.pl) (SWI-Prolog ↔ Julia bridge).
 
+**Discussions**: [ScryNeuro Discussions](https://github.com/sporeking/ScryNeuro/discussions)
+
 ## Architecture
 
 ```text
