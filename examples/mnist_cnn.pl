@@ -80,8 +80,13 @@ load_data :-
         "train_size = len(train_dataset)",
         "test_size  = len(test_dataset)"
     ]),
-    py_eval("train_size", TrH), py_to_int(TrH, TrSize), py_free(TrH),
-    py_eval("test_size",  TeH), py_to_int(TeH, TeSize), py_free(TeH),
+    with_py_many([
+        TrH-py_eval("train_size", TrH),
+        TeH-py_eval("test_size", TeH)
+    ], (
+        py_to_int(TrH, TrSize),
+        py_to_int(TeH, TeSize)
+    )),
     format("[Step 2] MNIST loaded: ~d training / ~d test samples.~n", [TrSize, TeSize]).
 
 %% ---------------------------------------------------------------------------
@@ -95,9 +100,7 @@ setup_training :-
         "optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)",
         "criterion = nn.CrossEntropyLoss()"
     ]),
-    py_eval("str(device)", DevH),
-    py_to_str(DevH, Dev),
-    py_free(DevH),
+    with_py_temp(py_eval("str(device)", DevH), DevH, py_to_str(DevH, Dev)),
     format("[Step 3] Training on device: ~s~n", [Dev]).
 
 %% ---------------------------------------------------------------------------
@@ -124,8 +127,13 @@ train_one_epoch(Epoch, Loss, Acc) :-
         "epoch_loss = _total_loss / _total",
         "epoch_acc  = 100.0 * _correct / _total"
     ]),
-    py_eval("epoch_loss", LH), py_to_float(LH, Loss), py_free(LH),
-    py_eval("epoch_acc",  AH), py_to_float(AH, Acc),  py_free(AH),
+    with_py_many([
+        LH-py_eval("epoch_loss", LH),
+        AH-py_eval("epoch_acc", AH)
+    ], (
+        py_to_float(LH, Loss),
+        py_to_float(AH, Acc)
+    )),
     format("  Epoch ~d — loss: ~4f  train_acc: ~2f%~n", [Epoch, Loss, Acc]).
 
 %% Run N epochs using Prolog recursion
@@ -153,7 +161,7 @@ evaluate(TestAcc) :-
         "        _total += _batch_x.size(0)",
         "test_acc = 100.0 * _correct / _total"
     ]),
-    py_eval("test_acc", AH), py_to_float(AH, TestAcc), py_free(AH).
+    with_py_temp(py_eval("test_acc", AH), AH, py_to_float(AH, TestAcc)).
 
 %% ---------------------------------------------------------------------------
 %% Step 6: Interactive single-image inference (neural predicate)
@@ -164,24 +172,24 @@ evaluate(TestAcc) :-
 %% class, which Prolog can then use in logical reasoning.
 
 digit(TestIndex, PredictedClass) :-
-    py_from_int(TestIndex, IdxH),
-    %% Use a lambda to pass the index from Prolog into the inference pipeline
-    py_eval("(lambda i: int(model(test_dataset[i][0].unsqueeze(0).to(device)).argmax(1).item()))", PredFn),
-    py_invoke(PredFn, IdxH, ClassH),
-    py_to_int(ClassH, PredictedClass),
-    py_free(ClassH),
-    py_free(PredFn),
-    py_free(IdxH).
+    with_py_many([
+        IdxH-py_from_int(TestIndex, IdxH),
+        PredFn-py_eval("(lambda i: int(model(test_dataset[i][0].unsqueeze(0).to(device)).argmax(1).item()))", PredFn)
+    ], (
+        %% Use a lambda to pass the index from Prolog into the inference pipeline
+        with_py_temp(py_invoke(PredFn, IdxH, ClassH), ClassH,
+            py_to_int(ClassH, PredictedClass))
+    )).
 
 %% Ground-truth label for comparison
 true_label(TestIndex, Label) :-
-    py_from_int(TestIndex, IdxH),
-    py_eval("(lambda i: int(test_dataset[i][1]))", LabelFn),
-    py_invoke(LabelFn, IdxH, LH),
-    py_to_int(LH, Label),
-    py_free(LH),
-    py_free(LabelFn),
-    py_free(IdxH).
+    with_py_many([
+        IdxH-py_from_int(TestIndex, IdxH),
+        LabelFn-py_eval("(lambda i: int(test_dataset[i][1]))", LabelFn)
+    ], (
+        with_py_temp(py_invoke(LabelFn, IdxH, LH), LH,
+            py_to_int(LH, Label))
+    )).
 
 %% Neuro-symbolic addition: two images -> sum of predicted digits
 neuro_add(Idx1, Idx2, Sum) :-
@@ -214,11 +222,12 @@ demo_inference_loop(I, Max) :-
 %% ---------------------------------------------------------------------------
 
 save_model(Path) :-
-    py_from_str(Path, PathH),
-    py_eval("(lambda p: torch.save(model.state_dict(), p))", SaveFn),
-    py_invoke(SaveFn, PathH, _),
-    py_free(SaveFn),
-    py_free(PathH),
+    with_py_many([
+        PathH-py_from_str(Path, PathH),
+        SaveFn-py_eval("(lambda p: torch.save(model.state_dict(), p))", SaveFn)
+    ], (
+        with_py_temp(py_invoke(SaveFn, PathH, SaveResult), SaveResult, true)
+    )),
     format("[Step 7] Model saved to: ~s~n", [Path]).
 
 %% ---------------------------------------------------------------------------

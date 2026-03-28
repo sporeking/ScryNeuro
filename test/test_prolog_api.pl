@@ -15,6 +15,18 @@ report_handle_cleanup(Label, Before) :-
     ; format("~w: FAIL (handles before=~d, after=~d)~n", [Label, Before, After])
     ).
 
+local_acquire_int(Value, Handle) :-
+    py_from_int(Value, Handle).
+
+local_goal_int_eq(Handle, Expected) :-
+    py_to_int(Handle, Value),
+    Value =:= Expected.
+
+local_goal_sum_eq(H1, H2, Expected) :-
+    py_to_int(H1, V1),
+    py_to_int(H2, V2),
+    V1 + V2 =:= Expected.
+
 test_eval :-
     py_eval("2 ** 10", H),
     py_to_int(H, V),
@@ -325,6 +337,33 @@ test_with_py_many_partial_acquire :-
     ),
     report_handle_cleanup('27. with_py_many (acquire error)', Before).
 
+test_with_py_local_goal_context :-
+    py_handle_count(Before),
+    py_eval("42", H),
+    with_py(H, local_goal_int_eq(H, 42)),
+    report_handle_cleanup('28. with_py (caller-local goal)', Before).
+
+test_with_py_temp_local_context :-
+    py_handle_count(Before),
+    with_py_temp(local_acquire_int(42, H), H, local_goal_int_eq(H, 42)),
+    report_handle_cleanup('29. with_py_temp (caller-local acquire/goal)', Before).
+
+test_with_py_many_local_goal_context :-
+    py_handle_count(Before),
+    with_py_many([
+        H1-py_from_int(1, H1),
+        H2-py_from_int(2, H2)
+    ], local_goal_sum_eq(H1, H2, 3)),
+    report_handle_cleanup('30. with_py_many (caller-local goal)', Before).
+
+test_with_py_many_explicit_qualified_acquire :-
+    py_handle_count(Before),
+    with_py_many([
+        H1-(user:local_acquire_int(1, H1)),
+        H2-(user:local_acquire_int(2, H2))
+    ], local_goal_sum_eq(H1, H2, 3)),
+    report_handle_cleanup('31. with_py_many (qualified acquire)', Before).
+
 test_setattr :-
     py_eval("type('_TestObj', (object,), {})", Cls),
     py_invoke(Cls, Instance),
@@ -333,8 +372,8 @@ test_setattr :-
     py_getattr(Instance, "x", Got),
     py_to_int(Got, V),
     ( V =:= 99 ->
-        format("28. setattr/getattr: OK~n", [])
-    ; format("28. setattr/getattr: FAIL~n", [])
+        format("32. setattr/getattr: OK~n", [])
+    ; format("32. setattr/getattr: FAIL~n", [])
     ),
     py_free(Got),
     py_free(Val),
@@ -370,7 +409,11 @@ test_setattr :-
     test_with_py_many_failure,
     test_with_py_many_exception,
     test_with_py_many_partial_acquire,
+    test_with_py_local_goal_context,
+    test_with_py_temp_local_context,
+    test_with_py_many_local_goal_context,
+    test_with_py_many_explicit_qualified_acquire,
     test_setattr,
-    format("=== ALL 28 PROLOG API TESTS PASSED ===~n", []),
+    format("=== ALL 32 PROLOG API TESTS PASSED ===~n", []),
     py_finalize
 )).

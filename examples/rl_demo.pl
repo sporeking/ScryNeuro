@@ -129,9 +129,9 @@ demo_load_agent :-
     format("~n=== Load Agent Demo ===~n", []),
 
     %% Check if checkpoint exists
-    py_eval("__import__('os').path.exists('checkpoints/cartpole_dqn.pt')", ExistsH),
-    py_to_bool(ExistsH, Exists),
-    py_free(ExistsH),
+    with_py_temp(py_eval("__import__('os').path.exists('checkpoints/cartpole_dqn.pt')", ExistsH), ExistsH, (
+        py_to_bool(ExistsH, Exists)
+    )),
 
     ( Exists = true ->
         format("Loading saved DQN agent...~n", []),

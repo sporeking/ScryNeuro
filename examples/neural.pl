@@ -54,37 +54,36 @@ setup_mnist_demo :-
 
 %% Neural predicate: classify a digit image
 digit(Image, Class) :-
-    py_import("__main__", Main),
-    py_getattr(Main, "_mock_mnist", Model),
-    py_invoke(Model, Image, Output),
-    %% Convert output to list and find argmax
-    py_to_json(Output, JsonStr),
-    py_from_json(JsonStr, Probs),
-    argmax_py(Probs, Class),
-    py_free(Output),
-    py_free(Model),
-    py_free(Main).
+    with_py_many([
+        Main-py_import("__main__", Main),
+        Model-py_getattr(Main, "_mock_mnist", Model),
+        Output-py_invoke(Model, Image, Output)
+    ], (
+        %% Convert output to list and find argmax
+        py_to_json(Output, JsonStr),
+        with_py_temp(py_from_json(JsonStr, Probs), Probs,
+            argmax_py(Probs, Class))
+    )).
 
 %% Find argmax using Python
 argmax_py(ProbsHandle, Class) :-
-    py_eval("lambda probs: max(range(len(probs)), key=lambda i: probs[i])", ArgmaxFn),
-    py_invoke(ArgmaxFn, ProbsHandle, ClassHandle),
-    py_to_int(ClassHandle, Class),
-    py_free(ClassHandle),
-    py_free(ArgmaxFn).
+    with_py_many([
+        ArgmaxFn-py_eval("lambda probs: max(range(len(probs)), key=lambda i: probs[i])", ArgmaxFn),
+        ClassHandle-py_invoke(ArgmaxFn, ProbsHandle, ClassHandle)
+    ],
+        py_to_int(ClassHandle, Class)
+    ).
 
 demo_mnist :-
     setup_mnist_demo,
     format("=== MNIST Demo (Mock) ===~n", []),
 
     %% Create a mock input tensor (28x28 flattened)
-    py_eval("[0.0] * 784", MockImage),
-
-    %% Classify
-    digit(MockImage, Class),
-    format("Predicted digit class: ~d~n", [Class]),
-
-    py_free(MockImage).
+    with_py_temp(py_eval("[0.0] * 784", MockImage), MockImage, (
+        %% Classify
+        digit(MockImage, Class),
+        format("Predicted digit class: ~d~n", [Class])
+    )).
 
 %% ===========================================================================
 %% Example 2: Neuro-Symbolic Reasoning
@@ -105,12 +104,13 @@ addition(Image1, Image2, Sum) :-
 
 demo_addition :-
     format("=== Neuro-Symbolic Addition ===~n", []),
-    py_eval("[0.0] * 784", Img1),
-    py_eval("[0.0] * 784", Img2),
-    addition(Img1, Img2, Sum),
-    format("digit(img1) + digit(img2) = ~d~n", [Sum]),
-    py_free(Img1),
-    py_free(Img2).
+    with_py_many([
+        Img1-py_eval("[0.0] * 784", Img1),
+        Img2-py_eval("[0.0] * 784", Img2)
+    ], (
+        addition(Img1, Img2, Sum),
+        format("digit(img1) + digit(img2) = ~d~n", [Sum])
+    )).
 
 %% ===========================================================================
 %% Example 3: LLM as a Knowledge Source
@@ -166,27 +166,27 @@ action_name(2, left).
 action_name(3, right).
 
 agent_action(State, ActionName) :-
-    py_import("__main__", Main),
-    py_getattr(Main, "_mock_rl_agent", Agent),
-    py_invoke(Agent, State, QValues),
-    py_to_json(QValues, JsonStr),
-    py_from_json(JsonStr, QList),
-    argmax_py(QList, ActionIdx),
-    action_name(ActionIdx, ActionName),
-    py_free(QValues),
-    py_free(QList),
-    py_free(Agent),
-    py_free(Main).
+    with_py_many([
+        Main-py_import("__main__", Main),
+        Agent-py_getattr(Main, "_mock_rl_agent", Agent),
+        QValues-py_invoke(Agent, State, QValues)
+    ], (
+        py_to_json(QValues, JsonStr),
+        with_py_temp(py_from_json(JsonStr, QList), QList, (
+            argmax_py(QList, ActionIdx),
+            action_name(ActionIdx, ActionName)
+        ))
+    )).
 
 demo_rl :-
     setup_rl_demo,
     format("=== RL Agent Demo (Mock) ===~n", []),
 
     %% Create a mock state
-    py_eval("[1.0, 0.5, -0.3, 0.8]", State),
-    agent_action(State, Action),
-    format("Agent chose action: ~w~n", [Action]),
-    py_free(State).
+    with_py_temp(py_eval("[1.0, 0.5, -0.3, 0.8]", State), State, (
+        agent_action(State, Action),
+        format("Agent chose action: ~w~n", [Action])
+    )).
 
 %% ===========================================================================
 %% Example 5: Probabilistic Neural Predicate (DeepProbLog-style)
@@ -201,35 +201,32 @@ demo_rl :-
 %% Simplified probabilistic query:
 %% "What is the most likely classification?"
 nn_classify(ModelHandle, Input, BestClass, Confidence) :-
-    py_invoke(ModelHandle, Input, Output),
-    py_to_json(Output, JsonStr),
-    py_from_json(JsonStr, ProbList),
-    %% Find max probability
-    py_eval("lambda probs: (max(range(len(probs)), key=lambda i: probs[i]), max(probs))", MaxFn),
-    py_invoke(MaxFn, ProbList, ResultTuple),
-    py_eval("lambda t: t[0]", GetIdx),
-    py_eval("lambda t: t[1]", GetProb),
-    py_invoke(GetIdx, ResultTuple, IdxH),
-    py_invoke(GetProb, ResultTuple, ProbH),
-    py_to_int(IdxH, BestClass),
-    py_to_float(ProbH, Confidence),
-    py_free(IdxH), py_free(ProbH),
-    py_free(GetIdx), py_free(GetProb),
-    py_free(MaxFn), py_free(ResultTuple),
-    py_free(ProbList), py_free(Output).
+    with_py_temp(py_invoke(ModelHandle, Input, Output), Output,
+        py_to_json(Output, JsonStr)),
+    with_py_many([
+        ProbList-py_from_json(JsonStr, ProbList),
+        %% Find max probability
+        MaxFn-py_eval("lambda probs: (max(range(len(probs)), key=lambda i: probs[i]), max(probs))", MaxFn),
+        ResultTuple-py_invoke(MaxFn, ProbList, ResultTuple),
+        GetIdx-py_eval("lambda t: t[0]", GetIdx),
+        GetProb-py_eval("lambda t: t[1]", GetProb),
+        IdxH-py_invoke(GetIdx, ResultTuple, IdxH),
+        ProbH-py_invoke(GetProb, ResultTuple, ProbH)
+    ], (
+        py_to_int(IdxH, BestClass),
+        py_to_float(ProbH, Confidence)
+    )).
 
 demo_probabilistic :-
     format("=== Probabilistic Neural Predicate ===~n", []),
-    py_import("__main__", Main),
-    py_getattr(Main, "_mock_mnist", Model),
-
-    py_eval("[0.0] * 784", Input),
-    nn_classify(Model, Input, Class, Conf),
-    format("Best class: ~d (confidence: ~f)~n", [Class, Conf]),
-
-    py_free(Input),
-    py_free(Model),
-    py_free(Main).
+    with_py_many([
+        Main-py_import("__main__", Main),
+        Model-py_getattr(Main, "_mock_mnist", Model),
+        Input-py_eval("[0.0] * 784", Input)
+    ], (
+        nn_classify(Model, Input, Class, Conf),
+        format("Best class: ~d (confidence: ~f)~n", [Class, Conf])
+    )).
 
 %% ===========================================================================
 %% Run all demos

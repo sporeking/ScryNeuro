@@ -561,6 +561,8 @@ Every handle represents a resource in the Rust/Python layers. You must free hand
 
 Rule of thumb: use `with_py/2` when you already have a handle, `with_py_temp/3` when acquisition itself should be scoped, and `with_py_many/2` when a block needs several temporary handles.
 
+Caller context note: `with_py/2` and `with_py_temp/3` preserve caller-local goal context, and the `Goal` argument of `with_py_many/2` does as well. For `with_py_many/2`, the `Specs` list is safest when each `Acquire` term is a `py_*` predicate or an explicitly module-qualified custom helper.
+
 ### Strings in Scryer Prolog
 Scryer Prolog represents double-quoted strings like `"hello"` as lists of characters (char lists). Atoms like `hello` are symbolic constants, not strings. This distinction is critical for the `:=` operator's dispatch mechanism. For multi-line Python, you can pass a continued string literal directly to `py_exec/1` using ISO Prolog backslash line continuation, as shown in `examples/basic.pl`. `py_exec_lines/1` is still available as a convenience wrapper, but it is functionally redundant because it only joins lines before calling `py_exec/1`.
 
@@ -1161,6 +1163,8 @@ Scoped cleanup for multiple temporary handles. `Specs` is a list of `Handle-Acqu
 
 - Later acquisitions may depend on handles created earlier in the list.
 - If a later acquisition fails or throws, previously acquired handles are still cleaned up.
+- `Goal` is executed in the caller's context.
+- For `Specs`, prefer `py_*` acquisition predicates or explicit module qualification for custom helpers.
 
 #### py_handle_count(-N)
 Returns the number of active handles in the registry. Useful for leak detection.
@@ -1211,6 +1215,14 @@ many_demo :-
         format("pi = ~f~n", [PiVal])
     )),
     py_finalize.
+```
+
+If a `Specs` entry uses a custom helper instead of a `py_*` predicate, prefer explicit module qualification and parenthesize the acquire term:
+
+```prolog
+with_py_many([
+    H-(user:my_helper(H))
+], Goal).
 ```
 
 **Example (error checking):**

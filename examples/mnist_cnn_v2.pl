@@ -43,14 +43,10 @@ add_examples_to_path :-
 %% py_dict_get/3 returns a handle. These wrappers convert + free in one step.
 
 dict_int(Dict, Key, Value) :-
-    py_dict_get(Dict, Key, H),
-    py_to_int(H, Value),
-    py_free(H).
+    with_py_temp(py_dict_get(Dict, Key, H), H, py_to_int(H, Value)).
 
 dict_float(Dict, Key, Value) :-
-    py_dict_get(Dict, Key, H),
-    py_to_float(H, Value),
-    py_free(H).
+    with_py_temp(py_dict_get(Dict, Key, H), H, py_to_float(H, Value)).
 
 %% ---------------------------------------------------------------------------
 %% Step 1: Create the pipeline object
@@ -60,9 +56,8 @@ dict_float(Dict, Key, Value) :-
 %% Prolog holds a single handle to it.
 
 create_pipeline(Pipeline) :-
-    py_import("mnist_cnn_module", Mod),
-    py_call(Mod, "create_pipeline", Pipeline),
-    py_free(Mod),
+    with_py_temp(py_import("mnist_cnn_module", Mod), Mod,
+        py_call(Mod, "create_pipeline", Pipeline)),
     format("[Step 1] Pipeline created (model defined).~n", []).
 
 %% ---------------------------------------------------------------------------
@@ -70,10 +65,10 @@ create_pipeline(Pipeline) :-
 %% ---------------------------------------------------------------------------
 
 load_data(Pipeline) :-
-    py_call(Pipeline, "load_data", Info),
-    dict_int(Info, "train_size", TrSize),
-    dict_int(Info, "test_size", TeSize),
-    py_free(Info),
+    with_py_temp(py_call(Pipeline, "load_data", Info), Info, (
+        dict_int(Info, "train_size", TrSize),
+        dict_int(Info, "test_size", TeSize)
+    )),
     format("[Step 2] MNIST loaded: ~d training / ~d test samples.~n",
            [TrSize, TeSize]).
 
@@ -82,9 +77,7 @@ load_data(Pipeline) :-
 %% ---------------------------------------------------------------------------
 
 setup_training(Pipeline) :-
-    py_call(Pipeline, "setup", DevH),
-    py_to_str(DevH, Dev),
-    py_free(DevH),
+    with_py_temp(py_call(Pipeline, "setup", DevH), DevH, py_to_str(DevH, Dev)),
     format("[Step 3] Training on device: ~s~n", [Dev]).
 
 %% ---------------------------------------------------------------------------
@@ -92,10 +85,10 @@ setup_training(Pipeline) :-
 %% ---------------------------------------------------------------------------
 
 train_one_epoch(Pipeline, Epoch) :-
-    py_call(Pipeline, "train_one_epoch", Stats),
-    dict_float(Stats, "loss", Loss),
-    dict_float(Stats, "accuracy", Acc),
-    py_free(Stats),
+    with_py_temp(py_call(Pipeline, "train_one_epoch", Stats), Stats, (
+        dict_float(Stats, "loss", Loss),
+        dict_float(Stats, "accuracy", Acc)
+    )),
     format("  Epoch ~d — loss: ~4f  train_acc: ~2f%~n", [Epoch, Loss, Acc]).
 
 train_epochs(_Pipeline, Current, Max) :-
@@ -110,9 +103,8 @@ train_epochs(Pipeline, Current, Max) :-
 %% ---------------------------------------------------------------------------
 
 evaluate(Pipeline, TestAcc) :-
-    py_call(Pipeline, "evaluate", AccH),
-    py_to_float(AccH, TestAcc),
-    py_free(AccH).
+    with_py_temp(py_call(Pipeline, "evaluate", AccH), AccH,
+        py_to_float(AccH, TestAcc)).
 
 %% ---------------------------------------------------------------------------
 %% Step 6: Neural predicate — single-image inference
@@ -122,18 +114,14 @@ evaluate(Pipeline, TestAcc) :-
 %% a trained neural network. It maps an image index to its predicted class.
 
 digit(Pipeline, TestIndex, PredictedClass) :-
-    py_from_int(TestIndex, IdxH),
-    py_call(Pipeline, "predict_digit", IdxH, PredH),
-    py_to_int(PredH, PredictedClass),
-    py_free(PredH),
-    py_free(IdxH).
+    with_py_temp(py_from_int(TestIndex, IdxH), IdxH,
+        with_py_temp(py_call(Pipeline, "predict_digit", IdxH, PredH), PredH,
+            py_to_int(PredH, PredictedClass))).
 
 true_label(Pipeline, TestIndex, Label) :-
-    py_from_int(TestIndex, IdxH),
-    py_call(Pipeline, "true_label", IdxH, LabelH),
-    py_to_int(LabelH, Label),
-    py_free(LabelH),
-    py_free(IdxH).
+    with_py_temp(py_from_int(TestIndex, IdxH), IdxH,
+        with_py_temp(py_call(Pipeline, "true_label", IdxH, LabelH), LabelH,
+            py_to_int(LabelH, Label))).
 
 %% Neuro-symbolic addition: two images → sum of predicted digits
 neuro_add(Pipeline, Idx1, Idx2, Sum) :-
@@ -165,9 +153,8 @@ demo_inference_loop(Pipeline, I, Max) :-
 %% ---------------------------------------------------------------------------
 
 save_model(Pipeline, Path) :-
-    py_from_str(Path, PathH),
-    py_call(Pipeline, "save_model", PathH, _),
-    py_free(PathH),
+    with_py_temp(py_from_str(Path, PathH), PathH,
+        with_py_temp(py_call(Pipeline, "save_model", PathH, SaveResult), SaveResult, true)),
     format("[Step 7] Model saved to: ~s~n", [Path]).
 
 %% ---------------------------------------------------------------------------

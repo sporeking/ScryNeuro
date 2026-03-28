@@ -104,6 +104,10 @@
 :- use_module(library(iso_ext)).
 :- use_module(library(os)).
 
+:- meta_predicate(with_py(?, 0)).
+:- meta_predicate(with_py_temp(0, ?, 0)).
+:- meta_predicate(with_py_many(?, 0)).
+
 %% ---------------------------------------------------------------------------
 %% FFI Declarations
 %% ---------------------------------------------------------------------------

@@ -610,6 +610,8 @@ catch(
 
 经验法则：已有句柄用 `with_py/2`；需要在作用域内创建一个临时句柄时用 `with_py_temp/3`；需要多个临时句柄时用 `with_py_many/2`。
 
+调用上下文说明：`with_py/2`、`with_py_temp/3` 会保留调用者本地 goal 的上下文，`with_py_many/2` 的 `Goal` 参数也是如此。对于 `with_py_many/2` 的 `Specs` 列表，最稳妥的写法仍然是直接使用 `py_*` 谓词，或者对自定义 helper 显式加上模块限定。
+
 ### Scryer Prolog 中的字符串
 在 Scryer Prolog 中，用双引号包裹的字符串（比如 `"hello"`）实际上是由字符组成的**列表**（char lists）。而像 `hello` 这样没有引号的则是**原子（Atoms）**，它们是符号常量，并不是字符串。这一区别在后续的 `:=` 运算符分发机制中非常关键。对于多行 Python 代码，可以像 `examples/basic.pl` 里的 `example_multiline/0` 那样，直接把 `py_exec/1` 的参数写成 ISO Prolog 的反斜杠续行字符串。`py_exec_lines/1` 仍然保留为便捷封装，但它本质上只是把多行拼接后再调用 `py_exec/1`，因此在功能上是冗余的。
 
@@ -836,7 +838,7 @@ class Point:\n\
 - `py_free(+Handle)`：释放句柄，将其从注册表中移除并减少引用计数。句柄无效时会抛异常。
 - `with_py(+Handle, +Goal)`：对一个已有句柄执行 RAII 风格清理。无论 `Goal` 成功、失败还是抛出异常，都会自动释放 `Handle`。
 - `with_py_temp(+Acquire, -Handle, +Goal)`：获取一个临时句柄、执行 `Goal`，并在退出时自动释放它。如果 `Acquire` 失败，则不会执行 `Goal`；如果 `Acquire` 在句柄创建前抛异常，也不会尝试释放不存在的句柄。
-- `with_py_many(+Specs, +Goal)`：批量作用域清理。`Specs` 是 `Handle-Acquire` 列表，按顺序获取多个句柄，并在退出时按逆序释放；如果后续获取失败，前面已经获取到的句柄仍会被安全清理。
+- `with_py_many(+Specs, +Goal)`：批量作用域清理。`Specs` 是 `Handle-Acquire` 列表，按顺序获取多个句柄，并在退出时按逆序释放；如果后续获取失败，前面已经获取到的句柄仍会被安全清理。`Goal` 会在调用者上下文中执行；而 `Specs` 中的获取项最好直接使用 `py_*` 谓词，或者对自定义 helper 显式写模块限定。
 - `py_handle_count(-N)`：获取当前活跃的句柄数量。
 
 **示例：**
@@ -857,6 +859,14 @@ raii_demo :-
         format("pi = ~f~n", [PiVal])
     )),
     py_finalize.
+```
+
+如果 `Specs` 里的获取项不是 `py_*` 谓词，而是你自己写的 helper，建议显式加模块限定，并给获取项加上括号：
+
+```prolog
+with_py_many([
+    H-(user:my_helper(H))
+], Goal).
 ```
 
 ### 神经网络谓词

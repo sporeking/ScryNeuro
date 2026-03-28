@@ -34,43 +34,47 @@ example_numpy_dot :-
 
     %% import numpy as np
     py_import("numpy", NP),
+    with_py(NP, (
+        %% Create two ndarrays using py_exec + eval
+        %% py_exec_lines/1 is only a convenience wrapper here; examples/basic.pl
+        %% shows the same multi-line code can be passed directly to py_exec/1.
+        py_exec_lines([
+            "import numpy as np",
+            "a = np.array([1.0, 2.0, 3.0, 4.0])",
+            "b = np.array([10.0, 20.0, 30.0, 40.0])"
+        ]),
+        with_py_temp(py_eval("float(np.dot(a, b))", DotH), DotH, (
+            py_to_float(DotH, Dot),
+            format("dot([1,2,3,4], [10,20,30,40]) = ~f~n", [Dot])
+        )),
 
-    %% Create two ndarrays using py_exec + eval
-    %% py_exec_lines/1 is only a convenience wrapper here; examples/basic.pl
-    %% shows the same multi-line code can be passed directly to py_exec/1.
-    py_exec_lines([
-        "import numpy as np",
-        "a = np.array([1.0, 2.0, 3.0, 4.0])",
-        "b = np.array([10.0, 20.0, 30.0, 40.0])"
-    ]),
-    py_eval("float(np.dot(a, b))", DotH),
-    py_to_float(DotH, Dot),
-    format("dot([1,2,3,4], [10,20,30,40]) = ~f~n", [Dot]),
-    py_free(DotH),
+        %% Matrix multiplication: 2x2 @ 2x2
+        py_exec_lines([
+            "M = np.array([[1.0,2.0],[3.0,4.0]])",
+            "N = np.array([[5.0,6.0],[7.0,8.0]])",
+            "MN = (M @ N).tolist()"
+        ]),
+        with_py_temp(py_eval("str(MN)", StrH), StrH, (
+            py_to_str(StrH, MatStr),
+            format("[[1,2],[3,4]] @ [[5,6],[7,8]] = ~s~n", [MatStr])
+        )),
 
-    %% Matrix multiplication: 2x2 @ 2x2
-    py_exec_lines([
-        "M = np.array([[1.0,2.0],[3.0,4.0]])",
-        "N = np.array([[5.0,6.0],[7.0,8.0]])",
-        "MN = (M @ N).tolist()"
-    ]),
-    py_eval("str(MN)", StrH),
-    py_to_str(StrH, MatStr),
-    format("[[1,2],[3,4]] @ [[5,6],[7,8]] = ~s~n", [MatStr]),
-    py_free(StrH),
-
-    %% Statistics
-    py_exec_lines([
-        "data = np.random.seed(42)",
-        "data = np.random.randn(1000)",
-        "result_mean = float(data.mean())",
-        "result_std  = float(data.std())"
-    ]),
-    py_eval("result_mean", MeanH), py_to_float(MeanH, Mean), py_free(MeanH),
-    py_eval("result_std",  StdH),  py_to_float(StdH, Std),   py_free(StdH),
-    format("randn(1000): mean=~f  std=~f~n", [Mean, Std]),
-
-    py_free(NP).
+        %% Statistics
+        py_exec_lines([
+            "data = np.random.seed(42)",
+            "data = np.random.randn(1000)",
+            "result_mean = float(data.mean())",
+            "result_std  = float(data.std())"
+        ]),
+        with_py_many([
+            MeanH-py_eval("result_mean", MeanH),
+            StdH-py_eval("result_std", StdH)
+        ], (
+            py_to_float(MeanH, Mean),
+            py_to_float(StdH, Std),
+            format("randn(1000): mean=~f  std=~f~n", [Mean, Std])
+        ))
+    )).
 
 
 %% ---------------------------------------------------------------------------
@@ -88,22 +92,22 @@ example_torch_tensor :-
     ]),
 
     %% L2 norm
-    py_eval("float(x.norm())", NormH),
-    py_to_float(NormH, Norm),
-    format("norm([1..5]) = ~f~n", [Norm]),
-    py_free(NormH),
+    with_py_temp(py_eval("float(x.norm())", NormH), NormH, (
+        py_to_float(NormH, Norm),
+        format("norm([1..5]) = ~f~n", [Norm])
+    )),
 
     %% Element-wise multiplication followed by sum
-    py_eval("float(y.sum())", SumH),
-    py_to_float(SumH, SumV),
-    format("sum(x*x) for x in [1..5] = ~f~n", [SumV]),
-    py_free(SumH),
+    with_py_temp(py_eval("float(y.sum())", SumH), SumH, (
+        py_to_float(SumH, SumV),
+        format("sum(x*x) for x in [1..5] = ~f~n", [SumV])
+    )),
 
     %% Check device (CPU / CUDA)
-    py_eval("str(x.device)", DevH),
-    py_to_str(DevH, Dev),
-    format("tensor device: ~s~n", [Dev]),
-    py_free(DevH).
+    with_py_temp(py_eval("str(x.device)", DevH), DevH, (
+        py_to_str(DevH, Dev),
+        format("tensor device: ~s~n", [Dev])
+    )).
 
 
 %% ---------------------------------------------------------------------------
@@ -139,9 +143,15 @@ example_torch_regression :-
     ]),
 
     %% Read fitting results
-    py_eval("float(W.item())", WH), py_to_float(WH, WVal), py_free(WH),
-    py_eval("float(b.item())", BH), py_to_float(BH, BVal), py_free(BH),
-    py_eval("float(loss.item())", LH), py_to_float(LH, LVal), py_free(LH),
+    with_py_many([
+        WH-py_eval("float(W.item())", WH),
+        BH-py_eval("float(b.item())", BH),
+        LH-py_eval("float(loss.item())", LH)
+    ], (
+        py_to_float(WH, WVal),
+        py_to_float(BH, BVal),
+        py_to_float(LH, LVal)
+    )),
 
     format("Fitting results: W=~f  b=~f  (Expected W≈2.0, b≈1.0)~n", [WVal, BVal]),
     format("Final MSE loss: ~f~n", [LVal]).
@@ -156,9 +166,9 @@ example_cuda_matmul :-
     format("~n=== CUDA: GPU Matrix Multiplication (skip if unavailable) ===~n", []),
 
     %% Use int(bool) to convert to 0/1, avoiding =:= conflict with Prolog atom true
-    py_eval("int(__import__('torch').cuda.is_available())", AvailH),
-    py_to_int(AvailH, Avail),
-    py_free(AvailH),
+    with_py_temp(py_eval("int(__import__('torch').cuda.is_available())", AvailH), AvailH, (
+        py_to_int(AvailH, Avail)
+    )),
 
     ( Avail =:= 1 ->
         py_exec_lines([
@@ -169,10 +179,10 @@ example_cuda_matmul :-
             "C = torch.mm(A, B)",
             "cuda_result = float(C.abs().mean())"
         ]),
-        py_eval("cuda_result", ResH),
-        py_to_float(ResH, Res),
-        py_free(ResH),
-        format("CUDA 512x512 matmul mean absolute value: ~f~n", [Res])
+        with_py_temp(py_eval("cuda_result", ResH), ResH, (
+            py_to_float(ResH, Res),
+            format("CUDA 512x512 matmul mean absolute value: ~f~n", [Res])
+        ))
     ;
         format("CUDA is unavailable, skipping GPU example.~n", [])
     ).

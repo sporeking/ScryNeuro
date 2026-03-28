@@ -20,9 +20,9 @@ run_example(Name, Goal) :-
     format("[OK] ~s~n", [Name]).
 
 setup_and_run_real_agent :-
-    py_eval("__import__('importlib.util', fromlist=['util']).find_spec('openai') is not None", OpenAIInstalledH),
-    py_to_bool(OpenAIInstalledH, HasOpenAI),
-    py_free(OpenAIInstalledH),
+    with_py_temp(py_eval("__import__('importlib.util', fromlist=['util']).find_spec('openai') is not None", OpenAIInstalledH), OpenAIInstalledH, (
+        py_to_bool(OpenAIInstalledH, HasOpenAI)
+    )),
     ( HasOpenAI == true -> true
     ; throw(error(missing_python_dependency('openai', 'pip install openai'), setup_and_run_real_agent/0))
     ),
