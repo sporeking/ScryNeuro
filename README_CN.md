@@ -279,6 +279,18 @@ main :-
 :- initialization(main).
 ```
 
+如果你更喜欢“作用域式”的自动清理，也可以写成：
+
+```prolog
+main_scoped :-
+    py_init,
+    with_py_temp(py_eval("1 + 2", X), X, (
+        py_to_int(X, Val),
+        format("结果: ~d~n", [Val])
+    )),
+    py_finalize.
+```
+
 **第三步：从你的项目目录运行**
 
 ```bash
@@ -591,8 +603,12 @@ catch(
 ### 内存管理
 每一个句柄都代表着 Rust/Python 层的一段真实资源。当句柄不再被需要时，你**必须手动释放它们**以防止内存泄漏。
 - `py_free/1`：手动清理某个特定的句柄。
-- `with_py(Handle, Goal)`：类似于现代编程语言中的 RAII 模式或 Python 的 `with` 语句。它会先执行目标代码 `Goal`，并在执行完毕后自动释放 `Handle`，无论执行成功、失败，还是抛出异常，它都能保证句柄被安全释放。
+- `with_py(Handle, Goal)`：针对“已有句柄”的 RAII 风格封装。它会执行 `Goal`，并在退出时自动释放 `Handle`；无论 `Goal` 成功、失败还是抛出异常，都会执行清理。
+- `with_py_temp(Acquire, Handle, Goal)`：针对“临时句柄”的获取/使用/释放封装。先执行 `Acquire` 获取 `Handle`，再执行 `Goal`，退出时自动释放句柄。如果 `Acquire` 在句柄成功创建前就失败或抛异常，则不会对该句柄执行清理。
+- `with_py_many(Specs, Goal)`：针对多个临时句柄的批量作用域清理。`Specs` 是 `Handle-Acquire` 对组成的列表，按从左到右的顺序获取，按逆序释放。
 - `py_handle_count/1`：诊断工具，返回当前活跃的句柄数量。
+
+经验法则：已有句柄用 `with_py/2`；需要在作用域内创建一个临时句柄时用 `with_py_temp/3`；需要多个临时句柄时用 `with_py_many/2`。
 
 ### Scryer Prolog 中的字符串
 在 Scryer Prolog 中，用双引号包裹的字符串（比如 `"hello"`）实际上是由字符组成的**列表**（char lists）。而像 `hello` 这样没有引号的则是**原子（Atoms）**，它们是符号常量，并不是字符串。这一区别在后续的 `:=` 运算符分发机制中非常关键。对于多行 Python 代码，可以像 `examples/basic.pl` 里的 `example_multiline/0` 那样，直接把 `py_exec/1` 的参数写成 ISO Prolog 的反斜杠续行字符串。`py_exec_lines/1` 仍然保留为便捷封装，但它本质上只是把多行拼接后再调用 `py_exec/1`，因此在功能上是冗余的。
@@ -818,8 +834,30 @@ class Point:\n\
 ### 内存管理
 用于管理句柄生命周期和诊断内存泄漏的工具。
 - `py_free(+Handle)`：释放句柄，将其从注册表中移除并减少引用计数。句柄无效时会抛异常。
-- `with_py(+Handle, +Goal)`：以 RAII 风格执行 `Goal`，完毕后自动释放 `Handle`。
+- `with_py(+Handle, +Goal)`：对一个已有句柄执行 RAII 风格清理。无论 `Goal` 成功、失败还是抛出异常，都会自动释放 `Handle`。
+- `with_py_temp(+Acquire, -Handle, +Goal)`：获取一个临时句柄、执行 `Goal`，并在退出时自动释放它。如果 `Acquire` 失败，则不会执行 `Goal`；如果 `Acquire` 在句柄创建前抛异常，也不会尝试释放不存在的句柄。
+- `with_py_many(+Specs, +Goal)`：批量作用域清理。`Specs` 是 `Handle-Acquire` 列表，按顺序获取多个句柄，并在退出时按逆序释放；如果后续获取失败，前面已经获取到的句柄仍会被安全清理。
 - `py_handle_count(-N)`：获取当前活跃的句柄数量。
+
+**示例：**
+```prolog
+:- use_module('prolog/scryer_py').
+
+raii_demo :-
+    py_init,
+    with_py_temp(py_eval("21 * 2", H), H, (
+        py_to_int(H, V),
+        format("值: ~d~n", [V])
+    )),
+    with_py_many([
+        Math-py_import("math", Math),
+        Pi-py_getattr(Math, "pi", Pi)
+    ], (
+        py_to_float(Pi, PiVal),
+        format("pi = ~f~n", [PiVal])
+    )),
+    py_finalize.
+```
 
 ### 神经网络谓词
 
@@ -1163,13 +1201,33 @@ numpy_demo :-
     
     maplist(py_free, [NP, Arr, Mean, Std, Arr2, Dot]).
 ```
+
+**模式 4：作用域化临时句柄清理**
+```prolog
+:- use_module('prolog/scryer_py').
+
+scoped_demo :-
+    py_init,
+    with_py_many([
+        Math-py_import("math", Math),
+        Pi-py_getattr(Math, "pi", Pi)
+    ], (
+        py_to_float(Pi, PiVal),
+        format("pi = ~f~n", [PiVal]),
+        with_py_temp(py_eval("21 * 2", ValueH), ValueH, (
+            py_to_int(ValueH, Value),
+            format("value = ~d~n", [Value])
+        ))
+    )),
+    py_finalize.
+```
 ---
 
 ## 示例
 
 | 文件                       | 说明                                                                       |
 | -------------------------- | -------------------------------------------------------------------------- |
-| `examples/basic.pl`        | 算术运算、模块导入、集合操作、错误处理、RAII 自动清理                      |
+| `examples/basic.pl`        | 算术运算、模块导入、集合操作、错误处理，以及句柄清理示例 |
 | `examples/neural.pl`       | MNIST 分类、神经符号加法、LLM 集成、强化学习 Agent                         |
 | `examples/numpy_torch.pl`  | NumPy 向量/矩阵、PyTorch 张量、线性回归、CUDA GPU 矩阵乘法                 |
 | `examples/mnist_cnn.pl`    | 从零训练 CNN 识别 MNIST 手写数字 —— 模型定义、训练循环、评估、神经符号推理 |

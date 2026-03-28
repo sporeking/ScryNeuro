@@ -460,6 +460,18 @@ main :-
 
 This example demonstrates the fundamental workflow: initialize the bridge, evaluate Python code to get a handle, convert the result to a Prolog-native value, print it, free the handle, and shut down. Every ScryNeuro program follows this pattern.
 
+If you prefer scoped cleanup, the same workflow can be expressed with `with_py_temp/3`, which acquires the temporary handle and frees it automatically when the goal exits:
+
+```prolog
+main_scoped :-
+    py_init,
+    with_py_temp(py_eval("1 + 2", X), X, (
+        py_to_int(X, Val),
+        format("Result: ~d~n", [Val])
+    )),
+    py_finalize.
+```
+
 ---
 
 ## Gradio Web UI (Simple Agent Playground)
@@ -542,8 +554,12 @@ catch(
 ### Memory Management
 Every handle represents a resource in the Rust/Python layers. You must free handles when they are no longer needed to prevent memory leaks.
 - `py_free/1`: Manual cleanup of a specific handle.
-- `with_py(Handle, Goal)`: RAII-style cleanup. Executes the goal and then frees the handle regardless of whether the goal succeeded, failed, or threw an exception.
+- `with_py(Handle, Goal)`: RAII-style cleanup for an existing handle. Executes the goal and then frees the handle regardless of whether the goal succeeded, failed, or threw an exception.
+- `with_py_temp(Acquire, Handle, Goal)`: Scoped acquire/use/release for a temporary handle. Runs `Acquire`, executes `Goal`, and frees `Handle` on exit. If `Acquire` fails or throws before a handle is produced, `Goal` is not run and no cleanup is attempted for that handle.
+- `with_py_many(Specs, Goal)`: Scoped cleanup for multiple temporary handles. `Specs` is a list of `Handle-Acquire` pairs acquired left-to-right and cleaned up in reverse order.
 - `py_handle_count/1`: Diagnostic tool that returns the number of currently active handles.
+
+Rule of thumb: use `with_py/2` when you already have a handle, `with_py_temp/3` when acquisition itself should be scoped, and `with_py_many/2` when a block needs several temporary handles.
 
 ### Strings in Scryer Prolog
 Scryer Prolog represents double-quoted strings like `"hello"` as lists of characters (char lists). Atoms like `hello` are symbolic constants, not strings. This distinction is critical for the `:=` operator's dispatch mechanism. For multi-line Python, you can pass a continued string literal directly to `py_exec/1` using ISO Prolog backslash line continuation, as shown in `examples/basic.pl`. `py_exec_lines/1` is still available as a convenience wrapper, but it is functionally redundant because it only joins lines before calling `py_exec/1`.
@@ -1131,7 +1147,20 @@ Tools for managing handle lifecycles and diagnosing leaks.
 Releases a handle, removing it from the registry and decrementing the Python reference count. Throws on invalid handle.
 
 #### with_py(+Handle, +Goal)
-RAII-style wrapper. Executes `Goal` and ensures `Handle` is freed regardless of the outcome.
+RAII-style wrapper for an existing handle. Executes `Goal` and ensures `Handle` is freed regardless of whether the goal succeeds, fails, or throws.
+
+#### with_py_temp(+Acquire, -Handle, +Goal)
+Acquire/use/release wrapper for a temporary handle. Runs `Acquire`, executes `Goal`, and ensures `Handle` is freed when the goal exits.
+
+- If `Acquire` fails, `Goal` is not run.
+- If `Acquire` throws before a handle is created, no cleanup is attempted for that handle.
+- If `Goal` fails or throws, the handle is still freed.
+
+#### with_py_many(+Specs, +Goal)
+Scoped cleanup for multiple temporary handles. `Specs` is a list of `Handle-Acquire` pairs. Handles are acquired left-to-right and cleaned up in reverse order.
+
+- Later acquisitions may depend on handles created earlier in the list.
+- If a later acquisition fails or throws, previously acquired handles are still cleaned up.
 
 #### py_handle_count(-N)
 Returns the number of active handles in the registry. Useful for leak detection.
@@ -1157,6 +1186,31 @@ raii_demo :-
 
     py_handle_count(After),
     format("Handles after: ~d~n", [After]).
+```
+
+**Example (with_py_temp):**
+```prolog
+temp_demo :-
+    py_init,
+    with_py_temp(py_eval("21 * 2", H), H, (
+        py_to_int(H, V),
+        format("Value: ~d~n", [V])
+    )),
+    py_finalize.
+```
+
+**Example (with_py_many):**
+```prolog
+many_demo :-
+    py_init,
+    with_py_many([
+        Math-py_import("math", Math),
+        Pi-py_getattr(Math, "pi", Pi)
+    ], (
+        py_to_float(Pi, PiVal),
+        format("pi = ~f~n", [PiVal])
+    )),
+    py_finalize.
 ```
 
 **Example (error checking):**
@@ -1621,13 +1675,33 @@ numpy_demo :-
     maplist(py_free, [NP, Arr, Mean, Std, Arr2, Dot]).
 ```
 
+**Pattern 4: Scoped Temporary Handles**
+```prolog
+:- use_module('prolog/scryer_py').
+
+scoped_demo :-
+    py_init,
+    with_py_many([
+        Math-py_import("math", Math),
+        Pi-py_getattr(Math, "pi", Pi)
+    ], (
+        py_to_float(Pi, PiVal),
+        format("pi = ~f~n", [PiVal]),
+        with_py_temp(py_eval("21 * 2", ValueH), ValueH, (
+            py_to_int(ValueH, Value),
+            format("value = ~d~n", [Value])
+        ))
+    )),
+    py_finalize.
+```
+
 ---
 
 ## Examples
 
 | File                       | Description                                                                                                |
 | -------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `examples/basic.pl`        | Arithmetic, modules, collections, error handling, RAII cleanup                                             |
+| `examples/basic.pl`        | Arithmetic, modules, collections, error handling, and handle-cleanup examples |
 | `examples/neural.pl`       | MNIST classification, neuro-symbolic addition, LLM, RL agents                                              |
 | `examples/numpy_torch.pl`  | NumPy vectors/matrices, PyTorch tensors, linear regression, CUDA GPU matmul                                |
 | `examples/mnist_cnn.pl`    | CNN training on MNIST from scratch — model definition, training loop, evaluation, neuro-symbolic inference |
