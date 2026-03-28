@@ -88,6 +88,8 @@
     print_py_error/1,
     % Resource management
     with_py/2,
+    with_py_temp/3,
+    with_py_many/2,
     % Helpers (exported for use by plugin modules)
     load_options/2,
     state_to_json/2,
@@ -99,6 +101,7 @@
 :- use_module(library(ffi)).
 :- use_module(library(lists)).
 :- use_module(library(format)).
+:- use_module(library(iso_ext)).
 :- use_module(library(os)).
 
 %% ---------------------------------------------------------------------------
@@ -617,11 +620,34 @@ print_py_error(Error) :-
 %%   ?- py_eval("42", H), with_py(H, (py_to_int(H, V), write(V))).
 %%
 with_py(Handle, Goal) :-
-    ( catch(Goal, E, (py_free(Handle), throw(E))) ->
+    setup_call_cleanup(
+        true,
+        Goal,
         py_free(Handle)
-    ; py_free(Handle),
-      fail
     ).
+
+%% with_py_temp(+Acquire, -Handle, +Goal): Acquire a temporary handle, execute
+%% Goal, and free the handle regardless of outcome.
+%%
+%%   ?- with_py_temp(py_eval("42", H), H, (py_to_int(H, V), write(V))).
+%%
+with_py_temp(Acquire, Handle, Goal) :-
+    setup_call_cleanup(
+        Acquire,
+        Goal,
+        py_free(Handle)
+    ).
+
+%% with_py_many(+Specs, +Goal): Acquire multiple temporary handles left-to-right,
+%% execute Goal, and free acquired handles in reverse order.
+%%
+%% Specs is a list of Handle-Acquire pairs, e.g.
+%%   [Runtime-py_import("math", Runtime), Pi-py_getattr(Runtime, "pi", Pi)]
+%%
+with_py_many([], Goal) :-
+    call(Goal).
+with_py_many([Handle-Acquire | Rest], Goal) :-
+    with_py_temp(Acquire, Handle, with_py_many(Rest, Goal)).
 
 %% ---------------------------------------------------------------------------
 %% Syntactic Sugar: := operator

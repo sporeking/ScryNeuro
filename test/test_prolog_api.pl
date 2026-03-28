@@ -8,6 +8,13 @@
 :- use_module('../prolog/scryer_py').
 :- use_module(library(format)).
 
+report_handle_cleanup(Label, Before) :-
+    py_handle_count(After),
+    ( After =:= Before ->
+        format("~w: OK~n", [Label])
+    ; format("~w: FAIL (handles before=~d, after=~d)~n", [Label, Before, After])
+    ).
+
 test_eval :-
     py_eval("2 ** 10", H),
     py_to_int(H, V),
@@ -220,16 +227,103 @@ test_error_handling :-
     ) -> true ; format("17. error handling: FAIL~n", []) ).
 
 test_with_py :-
+    py_handle_count(Before),
     py_eval("42", H),
     with_py(H, (
         py_to_int(H, V),
-        ( V =:= 42 -> true ; true )
+        V =:= 42
     )),
-    py_handle_count(Count),
-    ( Count =:= 0 ->
-        format("18. with_py: OK~n", [])
-    ; format("18. with_py: FAIL (handles=~d)~n", [Count])
+    report_handle_cleanup('18. with_py (success)', Before).
+
+test_with_py_failure :-
+    py_handle_count(Before),
+    py_eval("42", H),
+    ( with_py(H, fail) ->
+        format("19. with_py (failure): FAIL (goal unexpectedly succeeded)~n", [])
+    ; report_handle_cleanup('19. with_py (failure)', Before)
     ).
+
+test_with_py_exception :-
+    py_handle_count(Before),
+    py_eval("42", H),
+    catch(
+        with_py(H, throw(test_with_py_exception)),
+        test_with_py_exception,
+        true
+    ),
+    report_handle_cleanup('20. with_py (exception)', Before).
+
+test_with_py_temp :-
+    py_handle_count(Before),
+    with_py_temp(py_eval("21 * 2", H), H, (
+        py_to_int(H, V),
+        V =:= 42
+    )),
+    report_handle_cleanup('21. with_py_temp (success)', Before).
+
+test_with_py_temp_exception :-
+    py_handle_count(Before),
+    catch(
+        with_py_temp(py_eval("42", H), H, throw(test_with_py_temp_exception)),
+        test_with_py_temp_exception,
+        true
+    ),
+    report_handle_cleanup('22. with_py_temp (exception)', Before).
+
+test_with_py_temp_acquire_failure :-
+    py_handle_count(Before),
+    ( with_py_temp(fail, _H, true) ->
+        format("23. with_py_temp (acquire failure): FAIL (acquire unexpectedly succeeded)~n", [])
+    ; report_handle_cleanup('23. with_py_temp (acquire failure)', Before)
+    ).
+
+test_with_py_many :-
+    py_handle_count(Before),
+    with_py_many([
+        H1-py_from_int(1, H1),
+        H2-py_from_int(2, H2)
+    ], (
+        py_list_from_handles([H1, H2], List),
+        with_py(List, (
+            py_list_len(List, Len),
+            Len =:= 2
+        ))
+    )),
+    report_handle_cleanup('24. with_py_many (success)', Before).
+
+test_with_py_many_failure :-
+    py_handle_count(Before),
+    ( with_py_many([
+          H1-py_from_int(1, H1),
+          H2-py_from_int(2, H2)
+      ], fail) ->
+        format("25. with_py_many (failure): FAIL (goal unexpectedly succeeded)~n", [])
+    ; report_handle_cleanup('25. with_py_many (failure)', Before)
+    ).
+
+test_with_py_many_exception :-
+    py_handle_count(Before),
+    catch(
+        with_py_many([
+            H1-py_from_int(1, H1),
+            H2-py_from_int(2, H2)
+        ], throw(test_with_py_many_exception)),
+        test_with_py_many_exception,
+        true
+    ),
+    report_handle_cleanup('26. with_py_many (exception)', Before).
+
+test_with_py_many_partial_acquire :-
+    py_handle_count(Before),
+    catch(
+        with_py_many([
+            H1-py_from_int(1, H1),
+            H2-py_eval("1/0", H2)
+        ], true),
+        error(python_error(_), _),
+        true
+    ),
+    report_handle_cleanup('27. with_py_many (acquire error)', Before).
 
 test_setattr :-
     py_eval("type('_TestObj', (object,), {})", Cls),
@@ -239,8 +333,8 @@ test_setattr :-
     py_getattr(Instance, "x", Got),
     py_to_int(Got, V),
     ( V =:= 99 ->
-        format("19. setattr/getattr: OK~n", [])
-    ; format("19. setattr/getattr: FAIL~n", [])
+        format("28. setattr/getattr: OK~n", [])
+    ; format("28. setattr/getattr: FAIL~n", [])
     ),
     py_free(Got),
     py_free(Val),
@@ -267,7 +361,16 @@ test_setattr :-
     test_from_to,
     test_error_handling,
     test_with_py,
+    test_with_py_failure,
+    test_with_py_exception,
+    test_with_py_temp,
+    test_with_py_temp_exception,
+    test_with_py_temp_acquire_failure,
+    test_with_py_many,
+    test_with_py_many_failure,
+    test_with_py_many_exception,
+    test_with_py_many_partial_acquire,
     test_setattr,
-    format("=== ALL 19 PROLOG API TESTS PASSED ===~n", []),
+    format("=== ALL 28 PROLOG API TESTS PASSED ===~n", []),
     py_finalize
 )).
