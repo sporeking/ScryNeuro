@@ -16,53 +16,6 @@ ScryNeuro 是一个连接 **Scryer Prolog** 与 **Python** 的高性能桥接框
 - **PyO3** — 在 Rust 内嵌入 Python；管理 GIL 和类型转换。
 - **Python** — 执行神经谓词、数据处理、库调用（PyTorch、NumPy、OpenAI 等）。
 
-### 插件架构（Plugin Architecture）
-
-NN、LLM 和 RL 功能以**可选插件**形式提供——各自为独立模块，按需通过 `use_module` 加载。核心模块 `scryer_py.pl` 只提供 `py_*` 谓词和 `:=` 运算符。
-
-| 插件       | 模块文件               | 谓词                                                                                                     |
-| ---------- | ---------------------- | -------------------------------------------------------------------------------------------------------- |
-| 神经网络   | `prolog/scryer_nn.pl`  | `nn_load/3,4`, `nn_predict/3,4`                                                                          |
-| 大语言模型 | `prolog/scryer_llm.pl` | `llm_load/3,4`, `llm_generate/3,4`                                                                       |
-| 强化学习   | `prolog/scryer_rl.pl`  | `rl_create/4`, `rl_load/3,4`, `rl_save/2`, `rl_action/3,4`, `rl_train/2,3`, `rl_evaluate/3`, `rl_info/2` |
-
-每个插件均有对应的 Python 运行时模块（`python/scryer_*_runtime.py`），在首次使用时懒加载。
-
-### Agent Profile 配置（Provider / Base URL / API / Model）
-
-Agent 子系统通过 JSON 读取 profile 配置，并支持 clean clone 回退：
-
-- 首选本地文件：`python/scryer_agent/config/agent_profiles.json`
-  - 这个文件用于本地私有配置，当前仓库中已被 gitignore。
-- clean clone 回退：`python/scryer_agent/config/agent_profiles.example.json`
-- 环境变量覆盖：`SCRYNEURO_AGENT_CONFIG=/abs/path/to/agent_profiles.json`
-- 可选本地覆盖文件：`<config>.local.json`
-  - 首选本地覆盖路径：`python/scryer_agent/config/agent_profiles.local.json`
-
-当本地覆盖文件存在时，会对基础配置做 deep-merge（嵌套对象递归合并，标量字段直接覆盖）。
-
-这意味着：即使 fresh clone 没有本地 `agent_profiles.json`，系统仍可从 example 配置中发现 `default_mock` 等 profile；真实密钥则继续保留在本地文件或环境变量中。
-
-运行时配置优先级（从高到低）如下：
-
-1. 调用时显式传入的 options
-2. 选中的 profile 配置（`python/scryer_agent/config/agent_profiles.json`；若缺失则回退到 package 内 example 配置），再叠加可选 `.local.json`
-3. 环境变量 / `.env` 回退（对 OpenAI：`OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL`；当 model=`auto` 时会读取 `OPENAI_MODEL`）
-4. 代码内硬默认（`provider=openai`、`model=auto`，以及 `OPENAI_MODEL` 缺失时回退到 `gpt-4o-mini`）
-
-推荐的本地初始化方式：
-
-```bash
-# 1）复制 example 配置到本地私有文件
-cp python/scryer_agent/config/agent_profiles.example.json python/scryer_agent/config/agent_profiles.json
-
-# 2）复制 .env 模板并写入密钥
-cp .env.example .env
-```
-
-example 配置中不会放真实 API key。若 profile 中未显式填写 `api_key`，runtime 会在创建 agent 时回退到环境变量或 `.env`。
-
-agent 包现在位于 `python/scryer_agent/` 下。
 ---
 
 ## 安装部署
@@ -869,226 +822,7 @@ with_py_many([
 ], Goal).
 ```
 
-### 神经网络谓词
-
-> **需要插件**：`:- use_module('prolog/scryer_nn').`
-
-用于管理并运行深度学习模型。
-
-#### `nn_load(+Name, +Path, +Options)`
-#### `nn_load(+Name, +Path, +Options, -Handle)`
-从文件加载模型并注册为一个符号名称（Atom）。
-
-| 参数    | 类型   | 说明                                                           |
-| ------- | ------ | -------------------------------------------------------------- |
-| Name    | 原子   | 该模型的标识符（比如 `my_model`）                              |
-| Path    | 字符串 | 模型文件路径                                                   |
-| Options | 列表   | `Key=Value` 的配置对（如 `[model_type=pytorch, device=cuda]`） |
-
-**`nn_load` 常用选项：**
-| 选项           | 示例                 | 说明                                  |
-| -------------- | -------------------- | ------------------------------------- |
-| `model_type`   | `model_type=pytorch` | 框架：`pytorch`, `tensorflow`, `onnx` |
-| `device`       | `device=cuda`        | 计算设备：`cpu`, `cuda`, `cuda:0`     |
-| `weights_only` | `weights_only=true`  | PyTorch：仅加载权重（更安全）         |
-
-#### `nn_predict(+Name, +Input, -Output)`
-#### `nn_predict(+Name, +Input, -Output, +Options)`
-使用已加载的模型执行推理。
-
-| 参数    | 类型 | 说明                              |
-| ------- | ---- | --------------------------------- |
-| Name    | 原子 | 匹配所加载模型的标识符            |
-| Input   | 句柄 | 输入数据的句柄（例如张量 Tensor） |
-| Output  | 句柄 | 推理结果句柄                      |
-| Options | 列表 | `Key=Value` 推理配置对            |
-
-**示例：**
-```prolog
-:- op(700, xfx, :=).
-:- use_module('prolog/scryer_py').
-:- use_module('prolog/scryer_nn').
-
-neural_demo :-
-    py_init,
-    nn_load(my_model, "models/classifier.pt",
-            [model_type=pytorch, device=cpu, weights_only=true]),
-    Input := py_eval("__import__('torch').randn(1, 784)"),
-    nn_predict(my_model, Input, Output),
-    py_to_str(Output, OutputStr),
-    format("Prediction: ~s~n", [OutputStr]),
-    py_free(Input), py_free(Output), py_finalize.
-```
-
 ---
-
-### LLM 谓词
-
-> **需要插件**：`:- use_module('prolog/scryer_llm').`
-
-用于与大语言模型提供商交互。
-
-#### `llm_load(+Name, +ModelId, +Options)`
-#### `llm_load(+Name, +ModelId, +Options, -Handle)`
-配置 LLM 提供商和模型。
-
-| 参数    | 类型   | 说明                           |
-| ------- | ------ | ------------------------------ |
-| Name    | 原子   | 标识符                         |
-| ModelId | 字符串 | 模型 ID（如 `"gpt-4"`）        |
-| Options | 列表   | 配置项（如 `provider=openai`） |
-
-**`llm_load` 常用选项：**
-| 选项          | 示例                    | 说明               |
-| ------------- | ----------------------- | ------------------ |
-| `provider`    | `provider=openai`       | LLM 提供商         |
-| `api_key`     | `api_key="sk-..."`      | API 密钥（字符串） |
-| `temperature` | `temperature=0.7`       | 采样温度           |
-| `max_tokens`  | `max_tokens=1024`       | 最大生成 token 数  |
-| `base_url`    | `base_url="http://..."` | 自定义端点 URL     |
-
-支持的提供商：`openai`, `anthropic`, `huggingface`, `ollama`, `custom`。
-
-#### `llm_generate(+Name, +Prompt, -Response)`
-#### `llm_generate(+Name, +Prompt, -Response, +Options)`
-根据提示词生成文本。
-
-| 参数     | 类型   | 说明                    |
-| -------- | ------ | ----------------------- |
-| Name     | 原子   | 匹配已加载 LLM 的标识符 |
-| Prompt   | 字符串 | 输入提示词              |
-| Response | 字符串 | 生成的文本响应          |
-| Options  | 列表   | 生成参数                |
-
-**示例：**
-```prolog
-:- use_module('prolog/scryer_py').
-:- use_module('prolog/scryer_llm').
-
-llm_demo :-
-    py_init,
-    catch(
-        (
-            llm_load(gpt, "gpt-4", [provider=openai]),
-            llm_generate(gpt, "2+2 等于几？只回答数字。", Response),
-            format("LLM 回答: ~s~n", [Response])
-        ),
-        _Error,
-        format("LLM 不可用（无 API 密钥或网络）~n", [])
-    ).
-```
-
----
-
-### RL 谓词
-
-> **需要插件**：`:- use_module('prolog/scryer_rl').`
-
-通过 [Tianshou v2.0](https://github.com/thu-ml/tianshou) 训练、评估和使用强化学习 Agent 的谓词。
-
-#### `rl_create(+Name, +EnvId, +Algorithm, +Options)`
-创建并注册新的 RL Agent。
-
-| 参数      | 类型   | 说明                                                                     |
-| --------- | ------ | ------------------------------------------------------------------------ |
-| Name      | 原子   | Agent 的符号标识符                                                       |
-| EnvId     | 字符串 | Gymnasium 环境 ID（如 `"CartPole-v1"`）                                  |
-| Algorithm | 原子   | RL 算法：`dqn`, `ppo`, `a2c`, `sac`, `td3`, `ddpg`, `pg`, `discrete_sac` |
-| Options   | 列表   | `Key=Value` 配置对                                                       |
-
-**`rl_create` 常用选项：**
-| 选项           | 示例                   | 说明                    |
-| -------------- | ---------------------- | ----------------------- |
-| `lr`           | `lr=0.001`             | 学习率                  |
-| `gamma`        | `gamma=0.99`           | 折扣因子                |
-| `hidden_sizes` | `hidden_sizes=[64,64]` | MLP 隐藏层大小          |
-| `n_train_envs` | `n_train_envs=4`       | 并行训练环境数量        |
-| `buffer_size`  | `buffer_size=20000`    | 回放缓冲区容量          |
-| `eps_training` | `eps_training=0.1`     | 训练时的 Epsilon（DQN） |
-
-#### `rl_load(+Name, +Path, +Options)`
-#### `rl_load(+Name, +Path, +Options, -Handle)`
-加载已保存的 RL Agent 检查点。
-
-| 参数    | 类型   | 说明                                                  |
-| ------- | ------ | ----------------------------------------------------- |
-| Name    | 原子   | 符号标识符                                            |
-| Path    | 字符串 | 检查点文件路径                                        |
-| Options | 列表   | **必须**包含 `env_id`（字符串）和 `algorithm`（原子） |
-
-#### `rl_save(+Name, +Path)`
-将当前 Agent 策略保存到检查点文件。
-
-| 参数 | 类型   | 说明                  |
-| ---- | ------ | --------------------- |
-| Name | 原子   | 已注册 Agent 的标识符 |
-| Path | 字符串 | 检查点输出路径        |
-
-#### `rl_action(+Name, +State, -Action)`
-#### `rl_action(+Name, +State, -Action, +Options)`
-根据观测查询 Agent 策略以获取动作。
-
-| 参数    | 类型 | 说明                      |
-| ------- | ---- | ------------------------- |
-| Name    | 原子 | 已注册 Agent 的标识符     |
-| State   | 句柄 | 观测张量的句柄            |
-| Action  | 句柄 | 选定动作的句柄            |
-| Options | 列表 | 如 `[deterministic=true]` |
-
-#### `rl_train(+Name, +Options)`
-#### `rl_train(+Name, +Options, -Metrics)`
-运行指定 Agent 的训练循环。
-
-| 参数    | 类型 | 说明                  |
-| ------- | ---- | --------------------- |
-| Name    | 原子 | 已注册 Agent 的标识符 |
-| Options | 列表 | 训练配置              |
-| Metrics | 句柄 | 训练指标字典的句柄    |
-
-**`rl_train` 常用选项：**
-| 选项                     | 示例                       | 说明                   |
-| ------------------------ | -------------------------- | ---------------------- |
-| `max_epochs`             | `max_epochs=10`            | 训练轮数               |
-| `epoch_num_steps`        | `epoch_num_steps=5000`     | 每轮步数               |
-| `batch_size`             | `batch_size=64`            | 更新的 mini-batch 大小 |
-| `test_step_num_episodes` | `test_step_num_episodes=5` | 每次测试阶段的回合数   |
-
-#### `rl_evaluate(+Name, +NumEpisodes, -Metrics)`
-对 Agent 进行固定回合数的评估。
-
-| 参数        | 类型 | 说明                  |
-| ----------- | ---- | --------------------- |
-| Name        | 原子 | 已注册 Agent 的标识符 |
-| NumEpisodes | 整数 | 评估回合数            |
-| Metrics     | 句柄 | 评估指标字典的句柄    |
-
-#### `rl_info(+Name, -Info)`
-返回已注册 Agent 的元数据。
-
-| 参数 | 类型 | 说明                  |
-| ---- | ---- | --------------------- |
-| Name | 原子 | 已注册 Agent 的标识符 |
-| Info | 句柄 | 信息字典的句柄        |
-
-**示例：**
-```prolog
-:- use_module('prolog/scryer_py').
-:- use_module('prolog/scryer_rl').
-
-rl_demo :-
-    py_init,
-    rl_create(agent, "CartPole-v1", dqn,
-              [lr=0.001, hidden_sizes=[64,64]]),
-    rl_train(agent, [max_epochs=5, epoch_num_steps=2000], Metrics),
-    py_to_str(Metrics, MetricsStr),
-    format("训练指标: ~s~n", [MetricsStr]),
-    rl_evaluate(agent, 10, EvalMetrics),
-    py_to_str(EvalMetrics, EvalStr),
-    format("评估指标: ~s~n", [EvalStr]),
-    rl_save(agent, "checkpoints/cartpole_dqn.pt"),
-    py_free(Metrics), py_free(EvalMetrics), py_finalize.
-
-## 语法糖：`:=` 运算符
 
 `:=` 运算符能够让常用的操作变得更加简洁。它使用了一种“三分发（3-way dispatch）”机制来区分不同的操作类型。
 
@@ -1286,7 +1020,7 @@ ls $(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")/l
 
 ## 项目结构
 
-下面是当前仓库的源码目录概览，省略了 `.gitignore` 中定义的忽略项，例如构建产物、数据缓存和本地复制出来的共享库文件：
+核心源码目录（LLM/RL/Agent/NN 模块已移至 `test_modules/`）：
 
 ```
 ScryNeuro/
@@ -1303,62 +1037,19 @@ ScryNeuro/
 │   ├── convert.rs          # 类型转换 + TLS 字符串缓冲区
 │   └── error.rs            # TLS 错误存储（spy_last_error）
 ├── prolog/
-│   ├── scryer_py.pl        # 核心模块：py_* 谓词 + := 运算符
-│   ├── scryer_nn.pl        # 插件：nn_load, nn_predict
-│   ├── scryer_llm.pl       # 插件：llm_load, llm_generate
-│   ├── scryer_rl.pl        # 插件：rl_create, rl_train, rl_action, ...
-│   ├── scryer_agent.pl     # Agent 编排相关谓词
-│   ├── scryer_agent_api.pl # 面向 Agent 的 API 谓词
-│   └── scryer_tool_predicates.pl # 工具注册与辅助谓词
+│   └── scryer_py.pl        # 核心模块：py_* 谓词 + := 运算符
 ├── python/
-│   ├── scryer_py_runtime.py  # 核心运行时：设备管理、TensorUtils
-│   ├── scryer_nn_runtime.py  # NN 运行时：模型加载与推理
-│   ├── scryer_llm_runtime.py # LLM 运行时：提供商抽象层
-│   ├── scryer_rl_runtime.py  # RL 运行时：Tianshou 封装
-│   └── scryer_agent/
-│       ├── runtime.py        # Agent 会话运行时
-│       ├── tool_runtime.py   # 工具执行运行时
-│       ├── tools.py          # 内置工具实现
-│       ├── plugins.py        # 插件加载与注册
-│       ├── config.py         # Agent 配置加载
-│       ├── config/
-│       │   └── agent_profiles.example.json # Agent 配置示例
-│       ├── web_ui/
-│       │   ├── app_gradio.py # Gradio Web UI
-│       │   └── agent_adapter.py # UI 到 Agent 的桥接层
-│       └── skills/
-│           ├── research-web-markdown/ # 研究型技能包
-│           └── shell-safety-exec/     # Shell 安全执行技能包
+│   └── scryer_py_runtime.py  # 核心运行时：设备管理、TensorUtils
 ├── examples/
-│   ├── basic.pl            # 基础交互示例
-│   ├── neural.pl           # 神经符号模式示例（NN + LLM + RL）
-│   ├── numpy_torch.pl      # NumPy + PyTorch + CUDA 示例
-│   ├── mnist_cnn.pl        # CNN MNIST 训练流水线（内联 Python）
-│   ├── mnist_cnn_v2.pl     # CNN MNIST 训练流水线（模块模式）
-│   ├── mnist_cnn_module.py # mnist_cnn_v2.pl 的 Python 模块
-│   ├── real_llm_agent.pl   # 端到端 LLM Agent 示例
-│   └── rl_demo.pl          # RL 示例：DQN on CartPole-v1
-├── docs/
-│   └── agent_architecture_zh.md # Agent 架构说明（中文）
+│   └── basic.pl            # 基础交互示例
 ├── test/
-│   ├── conftest.py              # Pytest 夹具
-│   ├── test_prolog_api.pl       # 高层 Prolog API 测试
-│   ├── test_comprehensive.pl    # 底层 FFI 覆盖测试
-│   ├── test_minimal_api.pl      # 最小冒烟测试
-│   ├── test_smoke.pl            # 基础运行时冒烟测试
-│   ├── test_pi.pl               # 快速 pi/import 健康检查
-│   ├── test_rl.pl               # Prolog RL 插件测试
-│   ├── test_rl.py               # Python RL 运行时测试
-│   ├── test_agent_demo.pl       # Agent 示例集成测试
-│   ├── test_agent_mock.pl       # Mock Agent 行为测试
-│   ├── test_agent_profiles.pl   # Agent 配置档测试
-│   ├── test_agent_session.pl    # Agent 会话生命周期测试
-│   ├── test_agent_tool_catalog.py   # 工具目录测试
-│   ├── test_agent_tools_security.py # 工具安全策略测试
-│   ├── test_agent_config_safety.py  # Agent 配置安全测试
-│   ├── test_agent_log_schema.py     # Agent 日志结构测试
-│   ├── test_agent_package_migration.py # Agent 包迁移测试
-│   └── test_webui_defaults.py   # Web UI 默认配置测试
+│   ├── conftest.py         # Pytest 夹具
+│   ├── test_prolog_api.pl  # 高层 Prolog API 测试
+│   ├── test_comprehensive.pl # 底层 FFI 覆盖测试
+│   ├── test_minimal_api.pl # 最小冒烟测试
+│   ├── test_smoke.pl       # 基础运行时冒烟测试
+│   └── test_pi.pl          # 快速 pi/import 健康检查
+└ test_modules/             # （gitignored）LLM/RL/Agent/NN 实验性模块
 ```
 
 ## 开源协议

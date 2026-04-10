@@ -20,11 +20,6 @@
 %%     :- use_module('/path/to/ScryNeuro/prolog/scryer_py').
 %%     ?- py_init_home("/path/to/ScryNeuro").
 %%
-%% Plugin modules (load separately as needed):
-%%   :- use_module('prolog/scryer_nn').  % nn_load/nn_predict
-%%   :- use_module('prolog/scryer_llm'). % llm_load/llm_generate
-%%   :- use_module('prolog/scryer_rl').  % rl_create/rl_train/rl_action etc.
-%%
 %% NOTE: The := operator must be defined before the module declaration
 %%        so that the Prolog parser can handle it in the export list.
 :- op(700, xfx, :=).

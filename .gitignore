@@ -22,8 +22,9 @@ __pycache__/
 .venv/
 .env
 /logs
-python/scryer_agent/config/agent_profiles.local.json
-python/scryer_agent/config/agent_profiles.json
+
+# Test/experimental modules (LLM/RL/Agent/NN)
+/test_modules/
 
 # Tooling
 .ruff_cache/

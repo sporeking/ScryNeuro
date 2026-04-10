@@ -18,54 +18,6 @@ Inspired by [Jurassic.pl](https://github.com/haldai/Jurassic.pl) (SWI-Prolog ↔
 - **PyO3** — embeds Python within Rust; manages GIL and type conversions.
 - **Python** — executes neural predicates, data processing, library calls (PyTorch, NumPy, OpenAI, etc.).
 
-### Plugin Architecture
-
-NN, LLM, and RL functionality are **opt-in plugins** — separate modules loaded via `use_module`. The core (`scryer_py.pl`) only provides `py_*` predicates and the `:=` operator.
-
-| Plugin                 | Module file            | Predicates                                                                                               |
-| ---------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------- |
-| Neural Networks        | `prolog/scryer_nn.pl`  | `nn_load/3,4`, `nn_predict/3,4`                                                                          |
-| Large Language Models  | `prolog/scryer_llm.pl` | `llm_load/3,4`, `llm_generate/3,4`                                                                       |
-| Reinforcement Learning | `prolog/scryer_rl.pl`  | `rl_create/4`, `rl_load/3,4`, `rl_save/2`, `rl_action/3,4`, `rl_train/2,3`, `rl_evaluate/3`, `rl_info/2` |
-
-Each plugin has a matching Python runtime module (`python/scryer_*_runtime.py`) that is loaded lazily on first use.
-
-### Agent Profile Configuration (Provider/Base URL/API/Model)
-
-The agent subsystem reads profile configuration from JSON, with a clean-clone fallback:
-
-- Preferred local file: `python/scryer_agent/config/agent_profiles.json`
-  - This file is intended for local use and is gitignored in this repo.
-- Clean-clone fallback: `python/scryer_agent/config/agent_profiles.example.json`
-- Override with env: `SCRYNEURO_AGENT_CONFIG=/abs/path/to/agent_profiles.json`
-- Optional local override file: `<config>.local.json`
-  - Preferred local override path: `python/scryer_agent/config/agent_profiles.local.json`
-
-When a local override exists, it is deep-merged into the base config (nested objects are merged; scalar values are overridden).
-
-This means a fresh clone can still discover profiles such as `default_mock` from the example config, while real secrets remain in local-only files or environment variables.
-
-Runtime precedence for effective settings is:
-
-1. Explicit options passed at agent creation call (highest priority)
-2. Profile fields from the selected config file (`python/scryer_agent/config/agent_profiles.json`, otherwise package example config) plus optional `.local.json` override
-3. Environment / `.env` fallback (for OpenAI: `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL` when model is `auto`)
-4. Hard defaults (`provider=openai`, `model=auto`, then `OPENAI_MODEL` fallback to `gpt-4o-mini`)
-
-Recommended local setup:
-
-```bash
-# 1) Keep real secrets out of version control
-cp python/scryer_agent/config/agent_profiles.example.json python/scryer_agent/config/agent_profiles.json
-
-# 2) Put secrets in .env (also gitignored)
-cp .env.example .env
-```
-
-The example config intentionally omits real API keys. If a profile leaves `api_key` empty, the runtime will fall back to environment variables or `.env` during agent creation.
-
-The agent package now lives under `python/scryer_agent/`.
-
 ---
 
 ## Installation
@@ -1240,257 +1192,6 @@ check_error_demo :-
     ).
 ```
 
-### Neural Network Predicates
-
-> **Requires plugin**: `:- use_module('prolog/scryer_nn').`
-
-Predicates for managing and running deep learning models.
-
-#### nn_load(+Name, +Path, +Options)
-#### nn_load(+Name, +Path, +Options, -Handle)
-Loads a model from a file and registers it under a symbolic name.
-
-| Parameter | Type   | Description                                    |
-| --------- | ------ | ---------------------------------------------- |
-| Name      | Atom   | Symbolic identifier for the model              |
-| Path      | String | Path to the model file                         |
-| Options   | List   | `Key=Value` pairs (e.g., `model_type=pytorch`) |
-
-**Common Options for `nn_load`:**
-| Option         | Example              | Description                                |
-| -------------- | -------------------- | ------------------------------------------ |
-| `model_type`   | `model_type=pytorch` | Framework: `pytorch`, `tensorflow`, `onnx` |
-| `device`       | `device=cuda`        | Compute device: `cpu`, `cuda`, `cuda:0`    |
-| `weights_only` | `weights_only=true`  | PyTorch: load weights only (safer)         |
-
-#### nn_predict(+Name, +Input, -Output)
-#### nn_predict(+Name, +Input, -Output, +Options)
-Runs inference using a registered model.
-
-| Parameter | Type   | Description                         |
-| --------- | ------ | ----------------------------------- |
-| Name      | Atom   | Identifier matching a loaded model  |
-| Input     | Handle | Input data handle (tensor or array) |
-| Output    | Handle | Handle to the inference result      |
-| Options   | List   | `Key=Value` pairs for inference     |
-
-**Common Options for `nn_predict`:**
-| Option       | Example         | Description                  |
-| ------------ | --------------- | ---------------------------- |
-| `batch_size` | `batch_size=32` | Batch size for inference     |
-| `no_grad`    | `no_grad=true`  | Disable gradient computation |
-
-Options are formatted as `[key1=value1, key2=value2, ...]` where keys are atoms. Values can be numbers or atoms (atoms are converted to strings).
-
-**Example:**
-```prolog
-:- op(700, xfx, :=).
-:- use_module('prolog/scryer_py').
-:- use_module('prolog/scryer_nn').
-
-neural_demo :-
-    py_init,
-
-    %% Load a PyTorch model
-    nn_load(my_model, "models/classifier.pt",
-            [model_type=pytorch, device=cpu, weights_only=true]),
-
-    %% Create input tensor (via Python)
-    Input := py_eval("__import__('torch').randn(1, 784)"),
-
-    %% Run inference
-    nn_predict(my_model, Input, Output),
-    py_to_str(Output, OutputStr),
-    format("Prediction: ~s~n", [OutputStr]),
-
-    py_free(Input),
-    py_free(Output),
-    py_finalize.
-```
-
-### LLM Predicates
-
-> **Requires plugin**: `:- use_module('prolog/scryer_llm').`
-
-Predicates for interacting with Large Language Model providers.
-
-#### llm_load(+Name, +ModelId, +Options)
-#### llm_load(+Name, +ModelId, +Options, -Handle)
-Configures an LLM provider and model.
-
-| Parameter | Type   | Description                             |
-| --------- | ------ | --------------------------------------- |
-| Name      | Atom   | Symbolic identifier                     |
-| ModelId   | String | Model ID (e.g., "gpt-4")                |
-| Options   | List   | Configuration (e.g., `provider=openai`) |
-
-**Common Options for `llm_load`:**
-| Option        | Example                 | Description             |
-| ------------- | ----------------------- | ----------------------- |
-| `provider`    | `provider=openai`       | LLM provider            |
-| `api_key`     | `api_key="sk-..."`      | API key (string)        |
-| `temperature` | `temperature=0.7`       | Sampling temperature    |
-| `max_tokens`  | `max_tokens=1024`       | Maximum response tokens |
-| `base_url`    | `base_url="http://..."` | Custom endpoint URL     |
-
-Supported providers include `openai`, `anthropic`, `huggingface`, `ollama`, and `custom`.
-
-#### llm_generate(+Name, +Prompt, -Response)
-#### llm_generate(+Name, +Prompt, -Response, +Options)
-Generates text based on a prompt.
-
-| Parameter | Type   | Description                      |
-| --------- | ------ | -------------------------------- |
-| Name      | Atom   | Identifier matching a loaded LLM |
-| Prompt    | String | Input text prompt                |
-| Response  | String | Generated text response          |
-| Options   | List   | Parameters for generation        |
-
-**Common Options for `llm_generate`:**
-| Option        | Example           | Description          |
-| ------------- | ----------------- | -------------------- |
-| `temperature` | `temperature=0.5` | Override temperature |
-| `max_tokens`  | `max_tokens=256`  | Override max tokens  |
-| `stop`        | `stop="\n"`       | Stop sequence        |
-
-**Example:**
-```prolog
-:- use_module('prolog/scryer_py').
-:- use_module('prolog/scryer_llm').
-
-llm_demo :-
-    py_init,
-    catch(
-        (
-            llm_load(gpt, "gpt-4", [provider=openai]),
-            llm_generate(gpt, "What is 2+2? Reply with just the number.", Response),
-            format("LLM says: ~s~n", [Response])
-        ),
-        _Error,
-        format("LLM not available (no API key or network)~n", [])
-    ).
-```
-
-### RL Predicates
-
-> **Requires plugin**: `:- use_module('prolog/scryer_rl').`
-
-Predicates for training, evaluating, and using reinforcement learning agents via [Tianshou v2.0](https://github.com/thu-ml/tianshou).
-
-#### rl_create(+Name, +EnvId, +Algorithm, +Options)
-Creates and registers a new RL agent.
-
-| Parameter | Type   | Description                                                                   |
-| --------- | ------ | ----------------------------------------------------------------------------- |
-| Name      | Atom   | Symbolic identifier for the agent                                             |
-| EnvId     | String | Gymnasium environment ID (e.g., `"CartPole-v1"`)                              |
-| Algorithm | Atom   | RL algorithm: `dqn`, `ppo`, `a2c`, `sac`, `td3`, `ddpg`, `pg`, `discrete_sac` |
-| Options   | List   | `Key=Value` pairs                                                             |
-
-**Common Options for `rl_create`:**
-| Option         | Example                | Description                              |
-| -------------- | ---------------------- | ---------------------------------------- |
-| `lr`           | `lr=0.001`             | Learning rate                            |
-| `gamma`        | `gamma=0.99`           | Discount factor                          |
-| `hidden_sizes` | `hidden_sizes=[64,64]` | MLP hidden layer sizes                   |
-| `n_train_envs` | `n_train_envs=4`       | Number of parallel training environments |
-| `buffer_size`  | `buffer_size=20000`    | Replay buffer capacity                   |
-| `eps_training` | `eps_training=0.1`     | Epsilon for training (DQN)               |
-
-#### rl_load(+Name, +Path, +Options)
-#### rl_load(+Name, +Path, +Options, -Handle)
-Loads a saved RL agent checkpoint.
-
-| Parameter | Type   | Description                                            |
-| --------- | ------ | ------------------------------------------------------ |
-| Name      | Atom   | Symbolic identifier                                    |
-| Path      | String | Path to the checkpoint file                            |
-| Options   | List   | **Required**: `env_id` (string) and `algorithm` (atom) |
-
-#### rl_save(+Name, +Path)
-Saves the current agent policy to a checkpoint file.
-
-| Parameter | Type   | Description                      |
-| --------- | ------ | -------------------------------- |
-| Name      | Atom   | Identifier of a registered agent |
-| Path      | String | Output path for the checkpoint   |
-
-#### rl_action(+Name, +State, -Action)
-#### rl_action(+Name, +State, -Action, +Options)
-Queries the agent policy for an action given an observation.
-
-| Parameter | Type   | Description                      |
-| --------- | ------ | -------------------------------- |
-| Name      | Atom   | Identifier of a registered agent |
-| State     | Handle | Handle to the observation tensor |
-| Action    | Handle | Handle to the selected action    |
-| Options   | List   | e.g., `[deterministic=true]`     |
-
-#### rl_train(+Name, +Options)
-#### rl_train(+Name, +Options, -Metrics)
-Runs the training loop for the specified agent.
-
-| Parameter | Type   | Description                          |
-| --------- | ------ | ------------------------------------ |
-| Name      | Atom   | Identifier of a registered agent     |
-| Options   | List   | Training configuration               |
-| Metrics   | Handle | Handle to a dict of training metrics |
-
-**Common Options for `rl_train`:**
-| Option                   | Example                    | Description                 |
-| ------------------------ | -------------------------- | --------------------------- |
-| `max_epochs`             | `max_epochs=10`            | Number of training epochs   |
-| `epoch_num_steps`        | `epoch_num_steps=5000`     | Steps per epoch             |
-| `batch_size`             | `batch_size=64`            | Mini-batch size for updates |
-| `test_step_num_episodes` | `test_step_num_episodes=5` | Episodes per test phase     |
-
-#### rl_evaluate(+Name, +NumEpisodes, -Metrics)
-Evaluates the agent over a fixed number of episodes.
-
-| Parameter   | Type    | Description                       |
-| ----------- | ------- | --------------------------------- |
-| Name        | Atom    | Identifier of a registered agent  |
-| NumEpisodes | Integer | Number of evaluation episodes     |
-| Metrics     | Handle  | Handle to evaluation metrics dict |
-
-#### rl_info(+Name, -Info)
-Returns metadata about a registered agent.
-
-| Parameter | Type   | Description                      |
-| --------- | ------ | -------------------------------- |
-| Name      | Atom   | Identifier of a registered agent |
-| Info      | Handle | Handle to an info dict           |
-
-**Example:**
-```prolog
-:- use_module('prolog/scryer_py').
-:- use_module('prolog/scryer_rl').
-
-rl_demo :-
-    py_init,
-
-    %% Create a DQN agent for CartPole
-    rl_create(agent, "CartPole-v1", dqn,
-              [lr=0.001, hidden_sizes=[64,64]]),
-
-    %% Train for 5 epochs
-    rl_train(agent, [max_epochs=5, epoch_num_steps=2000], Metrics),
-    py_to_str(Metrics, MetricsStr),
-    format("Training metrics: ~s~n", [MetricsStr]),
-
-    %% Evaluate
-    rl_evaluate(agent, 10, EvalMetrics),
-    py_to_str(EvalMetrics, EvalStr),
-    format("Eval metrics: ~s~n", [EvalStr]),
-
-    %% Save checkpoint
-    rl_save(agent, "checkpoints/cartpole_dqn.pt"),
-
-    py_free(Metrics),
-    py_free(EvalMetrics),
-    py_finalize.
-```
-
 ---
 
 ## Syntactic Sugar: The `:=` Operator
@@ -1713,22 +1414,12 @@ scoped_demo :-
 
 | File                       | Description                                                                                                |
 | -------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `examples/basic.pl`        | Arithmetic, modules, collections, error handling, and handle-cleanup examples |
-| `examples/neural.pl`       | MNIST classification, neuro-symbolic addition, LLM, RL agents                                              |
-| `examples/numpy_torch.pl`  | NumPy vectors/matrices, PyTorch tensors, linear regression, CUDA GPU matmul                                |
-| `examples/mnist_cnn.pl`    | CNN training on MNIST from scratch — model definition, training loop, evaluation, neuro-symbolic inference |
-| `examples/mnist_cnn_v2.pl` | **Module pattern** (recommended): same CNN training, but Python code in a separate `.py` file              |
-| `examples/rl_demo.pl`      | DQN agent on CartPole-v1 — create, train, evaluate, save, load                                             |
+| `examples/basic.pl`        | Arithmetic, modules, collections, error handling, and handle-cleanup examples                             |
 
 ```bash
-# Run all examples (robust — works on all systems)
+# Run basic example (robust — works on all systems)
 PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
 LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/basic.pl
-LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/neural.pl
-LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/numpy_torch.pl
-LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/mnist_cnn.pl
-LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/mnist_cnn_v2.pl
-LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/rl_demo.pl
 
 # Or use run.sh (see Platform-Specific Notes > Linux > Convenience Wrapper)
 # ./run.sh examples/basic.pl
@@ -1762,7 +1453,7 @@ Build-time and runtime Python versions must match. If you switch environments, `
 
 ## Project Structure
 
-Current source tree overview, omitting entries ignored by `.gitignore` such as build artifacts, dataset caches, and local shared-library copies:
+Core source tree (LLM/RL/Agent/NN modules moved to `test_modules/`):
 
 ```
 ScryNeuro/
@@ -1779,62 +1470,19 @@ ScryNeuro/
 │   ├── convert.rs          # Type conversion + TLS string buffer
 │   └── error.rs            # TLS error storage (spy_last_error)
 ├── prolog/
-│   ├── scryer_py.pl        # Core: py_* predicates + := operator
-│   ├── scryer_nn.pl        # Plugin: nn_load, nn_predict
-│   ├── scryer_llm.pl       # Plugin: llm_load, llm_generate
-│   ├── scryer_rl.pl        # Plugin: rl_create, rl_train, rl_action, ...
-│   ├── scryer_agent.pl     # Agent orchestration predicates
-│   ├── scryer_agent_api.pl # Agent-facing API predicates
-│   └── scryer_tool_predicates.pl # Tool registry and helpers
+│   └── scryer_py.pl        # Core: py_* predicates + := operator
 ├── python/
-│   ├── scryer_py_runtime.py  # Core runtime: device management, TensorUtils
-│   ├── scryer_nn_runtime.py  # NN runtime: model loading + inference
-│   ├── scryer_llm_runtime.py # LLM runtime: provider abstraction
-│   ├── scryer_rl_runtime.py  # RL runtime: Tianshou wrappers
-│   └── scryer_agent/
-│       ├── runtime.py        # Agent session runtime
-│       ├── tool_runtime.py   # Tool execution runtime
-│       ├── tools.py          # Built-in tool implementations
-│       ├── plugins.py        # Plugin loading and registration
-│       ├── config.py         # Agent config loader
-│       ├── config/
-│       │   └── agent_profiles.example.json # Example agent profiles
-│       ├── web_ui/
-│       │   ├── app_gradio.py # Gradio web UI
-│       │   └── agent_adapter.py # UI-to-agent bridge
-│       └── skills/
-│           ├── research-web-markdown/ # Research skill bundle
-│           └── shell-safety-exec/     # Shell execution safety skill
+│   └── scryer_py_runtime.py  # Core runtime: device management, TensorUtils
 ├── examples/
-│   ├── basic.pl            # Basic interop demos
-│   ├── neural.pl           # Neuro-symbolic patterns 
-│   ├── numpy_torch.pl      # NumPy + PyTorch + CUDA demos
-│   ├── mnist_cnn.pl        # CNN MNIST training pipeline (inline Python)
-│   ├── mnist_cnn_v2.pl     # CNN MNIST training pipeline (module pattern)
-│   ├── mnist_cnn_module.py # Python module for mnist_cnn_v2.pl
-│   ├── real_llm_agent.pl   # End-to-end LLM agent example
-│   └── rl_demo.pl          # RL demo: DQN on CartPole-v1
-├── docs/
-│   └── agent_architecture_zh.md # Agent architecture notes (Chinese)
+│   └── basic.pl            # Basic interop demos
 ├── test/
-│   ├── conftest.py              # Pytest fixtures
-│   ├── test_prolog_api.pl       # High-level Prolog API tests
-│   ├── test_comprehensive.pl    # Low-level FFI coverage tests
-│   ├── test_minimal_api.pl      # Minimal smoke tests
-│   ├── test_smoke.pl            # Basic runtime smoke test
-│   ├── test_pi.pl               # Quick pi/import sanity check
-│   ├── test_rl.pl               # Prolog RL plugin tests
-│   ├── test_rl.py               # Python RL runtime tests
-│   ├── test_agent_demo.pl       # Agent demo integration test
-│   ├── test_agent_mock.pl       # Mock-agent behavior tests
-│   ├── test_agent_profiles.pl   # Agent profile tests
-│   ├── test_agent_session.pl    # Agent session lifecycle tests
-│   ├── test_agent_tool_catalog.py   # Tool catalog tests
-│   ├── test_agent_tools_security.py # Tool security policy tests
-│   ├── test_agent_config_safety.py  # Agent config safety tests
-│   ├── test_agent_log_schema.py     # Agent log schema tests
-│   ├── test_agent_package_migration.py # Agent package migration tests
-│   └── test_webui_defaults.py   # Web UI default config tests
+│   ├── conftest.py         # Pytest fixtures
+│   ├── test_prolog_api.pl  # High-level Prolog API tests
+│   ├── test_comprehensive.pl # Low-level FFI coverage tests
+│   ├── test_minimal_api.pl # Minimal smoke tests
+│   ├── test_smoke.pl       # Basic runtime smoke test
+│   └── test_pi.pl          # Quick pi/import sanity check
+└── test_modules/           # (gitignored) LLM/RL/Agent/NN experimental modules
 ```
 
 ## License

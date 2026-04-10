@@ -8,11 +8,6 @@ Provides:
 - Device management (get_device)
 - Tensor utilities (create, convert, inspect)
 
-Neural network, LLM, and RL functionality have been moved to separate plugin modules:
-  - scryer_nn_runtime.py  (imported by prolog/scryer_nn.pl)
-  - scryer_llm_runtime.py (imported by prolog/scryer_llm.pl)
-  - scryer_rl_runtime.py  (imported by prolog/scryer_rl.pl)
-
 This module is imported by the Rust bridge (via PyO3) and called
 through the FFI layer from Prolog.
 
