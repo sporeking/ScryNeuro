@@ -98,6 +98,7 @@
 :- use_module(library(format)).
 :- use_module(library(iso_ext)).
 :- use_module(library(os)).
+:- use_module(library(serialization/json)).
 
 :- meta_predicate(with_py(?, 0)).
 :- meta_predicate(with_py_temp(0, ?, 0)).
@@ -723,27 +724,17 @@ numlist_to_json_chars([X|Xs], Chars) :-
     numlist_to_json_chars(Xs, Rest),
     append(WithComma, Rest, Chars).
 
-%% json_to_value(+Json, -Value): Parse a simple JSON value.
-%% Handles numbers, strings, and passes through complex JSON as char list.
-json_to_value(Json, Value) :-
-    ( Json = [] ->
-        Value = []
-    ; Json = [0'{|_] ->
-        %% JSON object -- return as char list (the user can parse further)
-        Value = Json
-    ; Json = [0'[|_] ->
-        %% JSON array -- return as char list
-        Value = Json
-    ; Json = [0'"| _] ->
-        %% JSON string -- return as char list
-        Value = Json
-    ; %% Try to parse as number
-      catch(
-          (number_chars(N, Json), Value = N),
-          _,
-          Value = Json
-      )
-    ).
+%% json_to_value(+Json, -Value): Parse a JSON string into Prolog representation.
+%% Uses the official library(serialization/json) for full JSON parsing.
+%% Returns terms in JSON Schema format:
+%%   - pairs(List) for objects (List = [string(Key)-Value, ...])
+%%   - list(List) for arrays
+%%   - string(Chars) for strings
+%%   - number(N) for numbers
+%%   - boolean(true/false) for booleans
+%%   - null for null
+json_to_value(JsonChars, Value) :-
+    phrase(json:json_chars(Value), JsonChars).
 
 %% load_options(+DictHandle, +OptionList): Load key=value pairs into a Python dict.
 load_options(_, []) :- !.
