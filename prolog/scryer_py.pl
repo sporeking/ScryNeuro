@@ -86,7 +86,6 @@
     with_py_temp/3,
     with_py_many/2,
     % Helpers (exported for use by plugin modules)
-    load_options/2,
     numlist_to_json/2,
     json_to_value/2,
     % Operators
@@ -735,29 +734,3 @@ numlist_to_json_chars([X|Xs], Chars) :-
 %%   - null for null
 json_to_value(JsonChars, Value) :-
     phrase(json:json_chars(Value), JsonChars).
-
-%% load_options(+DictHandle, +OptionList): Load key=value pairs into a Python dict.
-load_options(_, []) :- !.
-load_options(Dict, [Key=Value | Rest]) :- !,
-    ( number(Value) ->
-        ( float(Value) ->
-            py_from_float(Value, PyVal)
-        ; py_from_int(Value, PyVal)
-        )
-    ; atom(Value) ->
-        atom_chars(Value, Chars),
-        atom_chars(StrValue, Chars),
-        py_from_str(StrValue, PyVal)
-    ; (Value = [] ; Value = [V1|_], number(V1)) ->
-        %% Convert Prolog list of numbers to Python list via JSON
-        numlist_to_json(Value, ListJson),
-        py_from_json(ListJson, PyVal)
-    ; py_from_str(Value, PyVal)
-    ),
-    atom_chars(Key, KeyChars),
-    atom_chars(KeyStr, KeyChars),
-    py_dict_set(Dict, KeyStr, PyVal),
-    py_free(PyVal),
-    load_options(Dict, Rest).
-load_options(Dict, [_ | Rest]) :-
-    load_options(Dict, Rest).
