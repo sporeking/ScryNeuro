@@ -87,7 +87,7 @@
     with_py_many/2,
     % Helpers (exported for use by plugin modules)
     load_options/2,
-    state_to_json/2,
+    numlist_to_json/2,
     json_to_value/2,
     % Operators
     (':=')/2
@@ -707,20 +707,20 @@ Var := Obj:Call :- !,
 %% Helpers (exported for plugin modules)
 %% ---------------------------------------------------------------------------
 
-%% state_to_json(+State, -Json): Convert a Prolog state (list of numbers) to JSON.
-state_to_json(State, Json) :-
-    state_to_json_chars(State, Inner),
+%% numlist_to_json(+NumList, -Json): Convert a Prolog list of numbers to a JSON array string.
+numlist_to_json(NumList, Json) :-
+    numlist_to_json_chars(NumList, Inner),
     append("[", Inner, T1),
     append(T1, "]", Json).
 
-state_to_json_chars([], []).
-state_to_json_chars([X], Chars) :-
+numlist_to_json_chars([], []).
+numlist_to_json_chars([X], Chars) :-
     number_chars(X, Chars).
-state_to_json_chars([X|Xs], Chars) :-
+numlist_to_json_chars([X|Xs], Chars) :-
     Xs = [_|_],
     number_chars(X, XChars),
     append(XChars, ",", WithComma),
-    state_to_json_chars(Xs, Rest),
+    numlist_to_json_chars(Xs, Rest),
     append(WithComma, Rest, Chars).
 
 %% json_to_value(+Json, -Value): Parse a simple JSON value.
@@ -759,7 +759,7 @@ load_options(Dict, [Key=Value | Rest]) :- !,
         py_from_str(StrValue, PyVal)
     ; (Value = [] ; Value = [V1|_], number(V1)) ->
         %% Convert Prolog list of numbers to Python list via JSON
-        state_to_json(Value, ListJson),
+        numlist_to_json(Value, ListJson),
         py_from_json(ListJson, PyVal)
     ; py_from_str(Value, PyVal)
     ),
