@@ -56,7 +56,7 @@ dict_float(Dict, Key, Value) :-
 %% Prolog holds a single handle to it.
 
 create_pipeline(Pipeline) :-
-    with_py_temp(py_import("mnist_cnn_module", Mod), Mod,
+    with_py_temp(py_import("examples.mnist_cnn_module", Mod), Mod,
         py_call(Mod, "create_pipeline", Pipeline)),
     format("[Step 1] Pipeline created (model defined).~n", []).
 
