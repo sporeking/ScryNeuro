@@ -479,45 +479,6 @@ DYLD_LIBRARY_PATH=".:$PYLIB:$DYLD_LIBRARY_PATH" scryer-prolog my_program.pl
 
 ---
 
-## Gradio Web UI（简易 Agent 测试页）
-
-如果你不想写前端工程，可以直接使用内置的 Gradio 页面做 Agent 测试。
-
-### 安装
-
-```bash
-pip install gradio
-```
-
-### 启动
-
-```bash
-PYTHONPATH=python python -m scryer_agent.web_ui.app_gradio
-```
-
-浏览器打开：`http://127.0.0.1:7860`
-
-### 支持功能
-
-- 选择 profile / provider / model 上下文
-- 从 profile 创建/替换 agent
-- 启用内置 tools
-- 加载 skills
-- 多轮对话（同一个 agent 保持上下文）
-- 运行任务（`agent_run`）并显示聊天历史
-- 从运行时状态刷新会话视图
-- 在保留 profile/tools/skills 配置的前提下重置会话
-- 查看 trace（`agent_trace`）
-- 关闭 agent（`agent_unload`）
-
-### 低耦合设计
-
-- `python/scryer_agent/web_ui/app_gradio.py`：canonical UI 模块
-- `python/scryer_agent/web_ui/agent_adapter.py`：canonical adapter 层
-- 核心逻辑现已收拢到 `python/scryer_agent/`
-
----
-
 ## 核心概念 (Core Concepts)
 
 ### 句柄（Handles）
@@ -1038,10 +999,10 @@ ScryNeuro/
 │   └── error.rs            # TLS 错误存储（spy_last_error）
 ├── prolog/
 │   └── scryer_py.pl        # 核心模块：py_* 谓词 + := 运算符
-├── python/
-│   └── scryer_py_runtime.py  # 核心运行时：设备管理、TensorUtils
 ├── examples/
-│   └── basic.pl            # 基础交互示例
+│   ├── basic.pl            # 基础交互示例
+│   ├── mnist_cnn_module.py # MNIST CNN 训练模块
+│   └── mnist_cnn_v2.pl     # MNIST CNN 示例（模块模式）
 ├── test/
 │   ├── conftest.py         # Pytest 夹具
 │   ├── test_prolog_api.pl  # 高层 Prolog API 测试

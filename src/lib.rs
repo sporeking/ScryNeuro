@@ -9,7 +9,7 @@
 //! - Error handling (thread-local last-error pattern)
 //!
 //! The Prolog layer (`prolog/scryer_py.pl`) wraps these into ergonomic predicates.
-//! The Python layer (`python/scryer_py_runtime.py`) provides model/LLM/tensor management.
+//! Python modules (e.g., `examples/mnist_cnn_module.py`) provide neural network and LLM logic.
 
 pub mod convert;
 pub mod error;

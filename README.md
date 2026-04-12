@@ -428,41 +428,6 @@ main_scoped :-
 
 ## Gradio Web UI (Simple Agent Playground)
 
-If you do not want to build a frontend app, use the built-in Python Gradio page for quick testing.
-
-### Install
-
-```bash
-pip install gradio
-```
-
-### Run
-
-```bash
-PYTHONPATH=python python -m scryer_agent.web_ui.app_gradio
-```
-
-Then open: `http://127.0.0.1:7860`
-
-### What it supports
-
-- Select profile/provider/model context
-- Create/replace agent from profile
-- Enable builtin tools
-- Load skills
-- Multi-turn conversation with persistent context (same agent)
-- Run a task (`agent_run`) and render chat history
-- Refresh conversation view from runtime state
-- Reset conversation while keeping the same profile/tools/skills config
-- Inspect trace (`agent_trace`)
-- Close agent (`agent_unload`)
-
-### Low-coupling design
-
-- `python/scryer_agent/web_ui/app_gradio.py`: canonical UI module
-- `python/scryer_agent/web_ui/agent_adapter.py`: canonical adapter layer
-- Core logic now lives in `python/scryer_agent/`
-
 ---
 
 ## Core Concepts
@@ -1471,10 +1436,10 @@ ScryNeuro/
 │   └── error.rs            # TLS error storage (spy_last_error)
 ├── prolog/
 │   └── scryer_py.pl        # Core: py_* predicates + := operator
-├── python/
-│   └── scryer_py_runtime.py  # Core runtime: device management, TensorUtils
 ├── examples/
-│   └── basic.pl            # Basic interop demos
+│   ├── basic.pl            # Basic interop demos
+│   ├── mnist_cnn_module.py # MNIST CNN training module
+│   └── mnist_cnn_v2.pl     # MNIST CNN example (module pattern)
 ├── test/
 │   ├── conftest.py         # Pytest fixtures
 │   ├── test_prolog_api.pl  # High-level Prolog API tests
