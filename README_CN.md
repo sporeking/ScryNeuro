@@ -12,7 +12,7 @@ ScryNeuro 是一个连接 **Scryer Prolog** 与 **Python** 的高性能桥接框
 ```
 
 - **Scryer Prolog** — 负责逻辑推理和顶层控制流。
-- **Rust cdylib** (`libscryneuro.so` / `.dylib`) — FFI 桥接，内含基于句柄的对象注册表。
+- **Rust cdylib** (`libscryneuro.so` / `.dylib` / `scryneuro.dll`) — FFI 桥接，内含基于句柄的对象注册表。
 - **PyO3** — 在 Rust 内嵌入 Python；管理 GIL 和类型转换。
 - **Python** — 执行神经谓词、数据处理、库调用（PyTorch、NumPy、OpenAI 等）。
 
@@ -25,7 +25,7 @@ ScryNeuro 是一个连接 **Scryer Prolog** 与 **Python** 的高性能桥接框
 | 组件              | 版本          | 说明                                           |
 | ----------------- | ------------- | ---------------------------------------------- |
 | **Rust**          | stable ≥ 1.70 | 推荐使用 `rustup`                              |
-| **Python**        | 3.10 – 3.13   | 必须包含共享库（`libpython3.x.so` / `.dylib`） |
+| **Python**        | 3.10 – 3.13   | 必须包含共享运行库                               |
 | **Scryer Prolog** | 最新 git      | 须支持 `library(ffi)`                          |
 
 > 关于 Python 3.14+：当前 `pyo3 = 0.23.x` 默认可能拒绝 Python 3.14。项目构建脚本已在检测到 Python >= 3.14 时自动启用 `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1`。
@@ -128,7 +128,13 @@ source build_linux.sh
 
 # macOS
 source build_macos.sh
+
+# Windows（PowerShell）
+.\build_windows.ps1 -Python C:\path\to\python.exe
 ```
+
+Windows 支持范围、端到端验证命令和 DLL 故障排查请参阅
+[WINDOWS.md](WINDOWS.md)。
 
 如果你在某些环境中仍直接运行 `cargo build --release` 且 Python 为 3.14+，请手动加上：
 

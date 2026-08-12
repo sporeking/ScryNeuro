@@ -9,11 +9,10 @@ AGENTS.md
 *.pt
 /libscryneuro.so
 /libscryneuro.dylib
+/scryneuro.dll
+/scryneuro.pdb
 .pytest_cache/
 .benchmarks/
-
-# Rust
-Cargo.lock
 
 # Python
 __pycache__/
@@ -22,6 +21,8 @@ __pycache__/
 .venv/
 .env
 /logs
+/.tools/
+/.scryneuro-home-fixture-*.pl
 
 # Test/experimental modules (LLM/RL/Agent/NN)
 /test_modules/

@@ -106,8 +106,8 @@
 %% ---------------------------------------------------------------------------
 %% FFI Declarations
 %% ---------------------------------------------------------------------------
-%% Loaded lazily by py_init/0. Tries ./libscryneuro.dylib first (macOS),
-%% then falls back to ./libscryneuro.so (Linux).
+%% Loaded lazily by py_init/0. Supports scryneuro.dll (Windows),
+%% libscryneuro.dylib (macOS), and libscryneuro.so (Linux).
 %%
 %% Scryer FFI syntax:
 %%   use_foreign_module(Path, [
@@ -216,7 +216,7 @@ check_status(Status, Context) :-
 
 %% py_init/0: Initialize with auto-detected library path.
 %% Tries SCRYNEURO_HOME env var first, then falls back to current directory.
-%% Tries .dylib (macOS) first, falls back to .so (Linux).
+%% Detects the platform library name in the selected directory.
 py_init :-
     ( initialized -> true
     ; ( catch(getenv("SCRYNEURO_HOME", Home), _, fail) ->
@@ -269,26 +269,49 @@ py_finalize :-
 %% Library Discovery Helpers
 %% ---------------------------------------------------------------------------
 
-%% find_lib_in_dir(+Dir, -LibPath): Find libscryneuro in a specific directory.
+%% find_lib_in_dir(+Dir, -LibPath): Find ScryNeuro in a specific directory.
 find_lib_in_dir(Dir, LibPath) :-
-    ( append(Dir, "/libscryneuro.dylib", DylibPath),
+    ( append(Dir, "/scryneuro.dll", DllPath),
+      readable_file(DllPath),
+      \+ readable_unix_library_in_dir(Dir) ->
+        LibPath = DllPath
+    ; append(Dir, "/libscryneuro.dylib", DylibPath),
       catch((open(DylibPath, read, S), close(S)), _, fail) ->
         LibPath = DylibPath
     ; append(Dir, "/libscryneuro.so", SoPath),
       catch((open(SoPath, read, S), close(S)), _, fail) ->
         LibPath = SoPath
+    ; append(Dir, "/scryneuro.dll", FallbackDllPath),
+      readable_file(FallbackDllPath) ->
+        LibPath = FallbackDllPath
     ; append("Could not find libscryneuro in directory: ", Dir, Msg),
       throw(error(python_error(Msg), py_init/0))
     ).
 
 %% find_lib_in_cwd(-LibPath): Find libscryneuro in the current directory.
 find_lib_in_cwd(LibPath) :-
-    ( catch((open('./libscryneuro.dylib', read, S), close(S)), _, fail) ->
+    ( readable_file('./scryneuro.dll'),
+      \+ readable_file('./libscryneuro.dylib'),
+      \+ readable_file('./libscryneuro.so') ->
+        LibPath = "./scryneuro.dll"
+    ; catch((open('./libscryneuro.dylib', read, S), close(S)), _, fail) ->
         LibPath = "./libscryneuro.dylib"
     ; catch((open('./libscryneuro.so', read, S), close(S)), _, fail) ->
         LibPath = "./libscryneuro.so"
-    ; throw(error(python_error("Could not find libscryneuro.dylib or libscryneuro.so. Set SCRYNEURO_HOME or run from the ScryNeuro directory."), py_init/0))
+    ; readable_file('./scryneuro.dll') ->
+        LibPath = "./scryneuro.dll"
+    ; throw(error(python_error("Could not find scryneuro.dll, libscryneuro.dylib, or libscryneuro.so. Set SCRYNEURO_HOME or run from the ScryNeuro directory."), py_init/0))
     ).
+
+readable_file(Path) :-
+    catch((open(Path, read, Stream), close(Stream)), _, fail).
+
+readable_unix_library_in_dir(Dir) :-
+    append(Dir, "/libscryneuro.dylib", DylibPath),
+    readable_file(DylibPath), !.
+readable_unix_library_in_dir(Dir) :-
+    append(Dir, "/libscryneuro.so", SoPath),
+    readable_file(SoPath).
 
 %% ---------------------------------------------------------------------------
 %% Evaluation

@@ -1,6 +1,6 @@
 //! ScryNeuro: Scryer Prolog ↔ Python bridge for neuro-symbolic AI.
 //!
-//! This crate builds a `cdylib` (.so) loaded by Scryer Prolog via `use_foreign_module/2`.
+//! This crate builds a `cdylib` (`.so`, `.dylib`, or `.dll`) loaded by Scryer Prolog via `use_foreign_module/2`.
 //! It embeds a Python runtime using PyO3 and exposes C ABI functions for:
 //!
 //! - Python object lifecycle (eval, import, call, drop)

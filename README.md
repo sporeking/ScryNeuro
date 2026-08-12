@@ -14,7 +14,7 @@ Inspired by [Jurassic.pl](https://github.com/haldai/Jurassic.pl) (SWI-Prolog ↔
 ```
 
 - **Scryer Prolog** — logical reasoning and top-level control flow.
-- **Rust cdylib** (`libscryneuro.so` / `.dylib`) — FFI bridge with handle-based object registry.
+- **Rust cdylib** (`libscryneuro.so` / `.dylib` / `scryneuro.dll`) — FFI bridge with handle-based object registry.
 - **PyO3** — embeds Python within Rust; manages GIL and type conversions.
 - **Python** — executes neural predicates, data processing, library calls (PyTorch, NumPy, OpenAI, etc.).
 
@@ -27,7 +27,7 @@ Inspired by [Jurassic.pl](https://github.com/haldai/Jurassic.pl) (SWI-Prolog ↔
 | Component         | Version       | Notes                                              |
 | ----------------- | ------------- | -------------------------------------------------- |
 | **Rust**          | stable ≥ 1.70 | `rustup` recommended                               |
-| **Python**        | 3.10 – 3.13   | with shared library (`libpython3.x.so` / `.dylib`) |
+| **Python**        | 3.10 – 3.13   | with its shared runtime library                    |
 | **Scryer Prolog** | latest git    | must support `library(ffi)`                        |
 
 > Note on Python 3.14+: current `pyo3 = 0.23.x` may reject Python 3.14 by default. Our build scripts now auto-enable `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` when Python >= 3.14 is detected.
@@ -130,7 +130,13 @@ source build_linux.sh
 
 # macOS
 source build_macos.sh
+
+# Windows (PowerShell)
+.\build_windows.ps1 -Python C:\path\to\python.exe
 ```
+
+For the supported Windows baseline, end-to-end validation command, and DLL
+diagnostics, see [WINDOWS.md](WINDOWS.md).
 
 If your shell/environment still invokes `cargo build --release` directly with Python 3.14+, set:
 
