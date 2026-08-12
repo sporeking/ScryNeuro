@@ -3,18 +3,21 @@
 :- use_module(library(ffi)).
 :- use_module('../prolog/scryer_py').
 
-%% Detect library path: try .dylib (macOS) by checking file existence,
-%% fall back to .so (Linux).
+%% Detect library path for Windows, macOS, or Linux.
 lib_path(Path) :-
     ( catch((open('./libscryneuro.dylib', read, S), close(S)), _, fail) ->
         Path = "./libscryneuro.dylib"
     ; catch((open('./libscryneuro.so', read, S), close(S)), _, fail) ->
         Path = "./libscryneuro.so"
+    ; catch((open('./scryneuro.dll', read, S), close(S)), _, fail) ->
+        Path = "./scryneuro.dll"
     ; catch((open('../libscryneuro.dylib', read, S), close(S)), _, fail) ->
         Path = "../libscryneuro.dylib"
     ; catch((open('../libscryneuro.so', read, S), close(S)), _, fail) ->
         Path = "../libscryneuro.so"
-    ; throw(error("Could not find libscryneuro.dylib or libscryneuro.so", lib_path/1))
+    ; catch((open('../scryneuro.dll', read, S), close(S)), _, fail) ->
+        Path = "../scryneuro.dll"
+    ; throw(error("Could not find a ScryNeuro dynamic library", lib_path/1))
     ).
 
 init :-
@@ -28,7 +31,7 @@ init :-
         'spy_last_error'([], cstr),
         'spy_finalize'([], void),
         'spy_handle_count'([], sint64)
-    ]) -> true ; throw(error("Failed to load foreign module (check DYLD_LIBRARY_PATH on macOS or LD_LIBRARY_PATH on Linux)", init/0))).
+    ]) -> true ; throw(error("Failed to load the ScryNeuro foreign module (check DLL or dynamic-library search paths)", init/0))).
 
 test :-
     %% 1. Initialize Python
