@@ -477,7 +477,7 @@ Every handle represents a resource in the Rust/Python layers. You must free hand
 - `with_py_many(Specs, Goal)`: Scoped cleanup for multiple temporary handles. `Specs` is a list of `Handle-Acquire` pairs acquired left-to-right and cleaned up in reverse order.
 - `py_handle_count/1`: Diagnostic tool that returns the number of currently active handles.
 
-Rule of thumb: use `with_py/2` when you already have a handle, `with_py_temp/3` when acquisition itself should be scoped, and `with_py_many/2` when a block needs several temporary handles.
+Rule of thumb: use `with_py/2` when you already have a handle, `with_py_temp/3` when acquisition itself should be scoped, and `with_py_many/2` when a block needs several temporary handles. Outputs marked `-Handle` must be unbound when called; a bound output raises an error before creating a Python object. If a constrained output rejects the new handle, the bridge releases it. Later Prolog backtracking still requires scoped cleanup.
 
 Caller context note: `with_py/2` and `with_py_temp/3` preserve caller-local goal context, and the `Goal` argument of `with_py_many/2` does as well. For `with_py_many/2`, the `Specs` list is safest when each `Acquire` term is a `py_*` predicate or an explicitly module-qualified custom helper.
 

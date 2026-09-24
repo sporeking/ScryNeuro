@@ -9,6 +9,7 @@
 :- use_module(library(format)).
 :- use_module(library(lists)).
 :- use_module(library(iso_ext)).
+:- use_module(library(clpz)).
 
 fail_test(Label) :-
     throw(error(test_failed(Label), test_prolog_api/0)).
@@ -18,6 +19,19 @@ report_handle_cleanup(Label, Before) :-
     ( After =:= Before ->
         format("~w: OK~n", [Label])
     ; throw(error(handle_leak(Label, Before, After), test_prolog_api/0))
+    ).
+
+expect_bound_handle_error(Goal, Context, Before) :-
+    catch(
+        ( call(Goal), fail_test('bound handle output accepted') ),
+        Error,
+        ( Error = error(uninstantiation_error(-1), Context) -> true
+        ; throw(Error)
+        )
+    ),
+    py_handle_count(After),
+    ( After =:= Before -> true
+    ; throw(error(handle_leak(Context, Before, After), test_prolog_api/0))
     ).
 
 local_acquire_int(Value, Handle) :-
@@ -241,8 +255,18 @@ test_error_handling :-
     ( catch(
         ( py_eval("1/0", _), fail_test('17. error handling (no exception)') ),
         error(python_error(_), _),
-        format("17. error handling: OK~n", [])
-    ) -> true ; fail_test('17. error handling') ).
+        true
+    ) -> true ; fail_test('17. error handling') ),
+    py_handle_count(Before),
+    once(with_py_temp(py_eval("lambda *args: 1 / 0", Fn), Fn, (
+        catch(
+            ( py_invoken(Fn, [], _), fail_test('call error missing') ),
+            error(python_error(Msg), py_invoken/3),
+            ( Msg = [_|_] -> true ; fail_test('call error message lost') )
+        )
+    ))),
+    report_handle_cleanup('call error cleanup', Before),
+    format("17. error handling: OK~n", []).
 
 test_nul_string :-
     py_eval("'A' + chr(0) + 'B'", H),
@@ -458,11 +482,71 @@ test_list_build_failures :-
         ),
         report_handle_cleanup('list append failure', During)
     )),
-    ( py_list_from_handles([], -1) ->
-        fail_test('pre-bound output accepted')
-    ; true
-    ),
+    expect_bound_handle_error(py_list_from_handles([], -1),
+                              py_list_from_handles/2, Before),
     report_handle_cleanup('pre-bound list output', Before).
+
+test_bound_handle_outputs :-
+    py_handle_count(Before),
+    expect_bound_handle_error(py_eval("42", -1), py_eval/2, Before),
+    expect_bound_handle_error(py_eval("1/0", -1), py_eval/2, Before),
+    expect_bound_handle_error(py_import("math", -1), py_import/2, Before),
+    expect_bound_handle_error(py_from_int(42, -1), py_from_int/2, Before),
+    expect_bound_handle_error(py_from_float(1.5, -1), py_from_float/2, Before),
+    expect_bound_handle_error(py_from_bool(true, -1), py_from_bool/2, Before),
+    expect_bound_handle_error(py_from_bool(false, -1), py_from_bool/2, Before),
+    expect_bound_handle_error(py_from_str("value", -1), py_from_str/2, Before),
+    expect_bound_handle_error(py_none(-1), py_none/1, Before),
+    expect_bound_handle_error(py_from_json("[]", -1), py_from_json/2, Before),
+    expect_bound_handle_error(py_list_new(-1), py_list_new/1, Before),
+    expect_bound_handle_error(py_dict_new(-1), py_dict_new/1, Before),
+    once(with_py_many([
+        Obj-py_eval("type('T', (), {'f': lambda self, *args: 42})()", Obj),
+        Arg-py_from_int(1, Arg),
+        Callable-py_eval("lambda *args: 42", Callable),
+        List-py_from_json("[1]", List),
+        Dict-py_from_json("{\"x\": 1}", Dict)
+    ], (
+        py_handle_count(During),
+        expect_bound_handle_error(py_getattr(Obj, "f", -1), py_getattr/3, During),
+        expect_bound_handle_error(py_call(Obj, "f", -1), py_call/3, During),
+        expect_bound_handle_error(py_call(Obj, "f", Arg, -1), py_call/4, During),
+        expect_bound_handle_error(py_call(Obj, "f", Arg, Arg, -1), py_call/5, During),
+        expect_bound_handle_error(py_call(Obj, "f", Arg, Arg, Arg, -1), py_call/6, During),
+        expect_bound_handle_error(py_calln(Obj, "f", [], -1), py_calln/4, During),
+        expect_bound_handle_error(py_calln(Obj, "f", [Arg], -1), py_calln/4, During),
+        expect_bound_handle_error(py_calln(Obj, "f", List, -1), py_calln/4, During),
+        expect_bound_handle_error(py_invoke(Callable, -1), py_invoke/2, During),
+        expect_bound_handle_error(py_invoke(Callable, Arg, -1), py_invoke/3, During),
+        expect_bound_handle_error(py_invoke(Callable, Arg, Arg, -1), py_invoke/4, During),
+        expect_bound_handle_error(py_invoken(Callable, [], -1), py_invoken/3, During),
+        expect_bound_handle_error(py_invoken(Callable, [Arg], -1), py_invoken/3, During),
+        expect_bound_handle_error(py_invoken(Callable, List, -1), py_invoken/3, During),
+        expect_bound_handle_error(py_list_get(List, 0, -1), py_list_get/3, During),
+        expect_bound_handle_error(py_dict_get(Dict, "x", -1), py_dict_get/3, During)
+    ))),
+    report_handle_cleanup('bound handle outputs', Before).
+
+test_constrained_handle_outputs :-
+    py_handle_count(Before),
+    EvalHandle #< 0,
+    ( py_eval("42", EvalHandle) ->
+        fail_test('constrained eval handle accepted')
+    ; report_handle_cleanup('constrained eval handle', Before)
+    ),
+    once(with_py_temp(py_from_int(7, Item), Item, (
+        py_handle_count(During),
+        ListHandle #< 0,
+        ( py_list_from_handles([Item], ListHandle) ->
+            fail_test('constrained list handle accepted')
+        ; report_handle_cleanup('constrained list handle', During)
+        )
+    ))),
+    AllowedHandle #> 0,
+    py_eval("42", AllowedHandle),
+    py_to_int(AllowedHandle, 42),
+    py_free(AllowedHandle),
+    report_handle_cleanup('constrained handle outputs', Before).
 
 test_stale_handles :-
     py_handle_count(Before),
@@ -507,6 +591,8 @@ all_tests :-
     test_operator_method_call_many,
     test_collections,
     test_list_build_failures,
+    test_bound_handle_outputs,
+    test_constrained_handle_outputs,
     test_none,
     test_json,
     test_from_to,
@@ -529,6 +615,6 @@ all_tests :-
     test_with_py_many_explicit_qualified_acquire,
     test_setattr,
     test_stale_handles,
-    format("=== ALL 36 PROLOG API TESTS PASSED ===~n", []).
+    format("=== ALL 38 PROLOG API TESTS PASSED ===~n", []).
 
 :- initialization(run_tests).

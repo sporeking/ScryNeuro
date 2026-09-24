@@ -210,6 +210,22 @@ check_handle(Handle, Context) :-
     ; true
     ).
 
+% Check output ownership before invoking Python; free a new handle if unification fails.
+require_unbound_handle(Output, Context) :-
+    ( var(Output) -> true
+    ; throw(error(uninstantiation_error(Output), Context))
+    ).
+
+new_handle(Output, Context, Acquire) :-
+    require_unbound_handle(Output, Context),
+    call(Acquire, Created),
+    check_handle(Created, Context),
+    ( catch(Output = Created, Error,
+            (py_free(Created), throw(Error))) ->
+        true
+    ; py_free(Created), fail
+    ).
+
 % Check if a status code indicates success (0).
 check_status(Status, Context) :-
     ( Status =:= 0 -> true
@@ -305,8 +321,7 @@ find_lib_in_cwd(LibPath) :-
 %% py_eval(+Code, -Handle): Evaluate a Python expression.
 %%   ?- py_eval("1 + 2", H).
 py_eval(Code, Handle) :-
-    ffi:'spy_eval'(Code, Handle),
-    check_handle(Handle, py_eval/2).
+    new_handle(Handle, py_eval/2, ffi:'spy_eval'(Code)).
 
 %% py_exec(+Code): Execute Python statements.
 %% Code may be multi-line; see examples/basic.pl for the continued
@@ -339,8 +354,7 @@ join_lines([L|Ls], NL, Result) :-
 %% py_import(+ModuleName, -Handle): Import a Python module.
 %%   ?- py_import("numpy", NP).
 py_import(ModuleName, Handle) :-
-    ffi:'spy_import'(ModuleName, Handle),
-    check_handle(Handle, py_import/2).
+    new_handle(Handle, py_import/2, ffi:'spy_import'(ModuleName)).
 
 %% ---------------------------------------------------------------------------
 %% Attribute Access
@@ -349,8 +363,7 @@ py_import(ModuleName, Handle) :-
 %% py_getattr(+Obj, +AttrName, -Value): Get attribute from Python object.
 %%   ?- py_import("math", M), py_getattr(M, "pi", Pi).
 py_getattr(Obj, AttrName, Value) :-
-    ffi:'spy_getattr'(Obj, AttrName, Value),
-    check_handle(Value, py_getattr/3).
+    new_handle(Value, py_getattr/3, ffi:'spy_getattr'(Obj, AttrName)).
 
 %% py_setattr(+Obj, +AttrName, +Value): Set attribute on Python object.
 py_setattr(Obj, AttrName, Value) :-
@@ -363,39 +376,28 @@ py_setattr(Obj, AttrName, Value) :-
 
 %% py_call(+Obj, +Method, -Result): Call method with no arguments.
 py_call(Obj, Method, Result) :-
-    ffi:'spy_invoke0'(Obj, Method, Result),
-    check_handle(Result, py_call/3).
+    new_handle(Result, py_call/3, ffi:'spy_invoke0'(Obj, Method)).
 
 %% py_call(+Obj, +Method, +Arg1, -Result): Call method with 1 argument.
 py_call(Obj, Method, Arg1, Result) :-
-    ffi:'spy_invoke1'(Obj, Method, Arg1, Result),
-    check_handle(Result, py_call/4).
+    new_handle(Result, py_call/4, ffi:'spy_invoke1'(Obj, Method, Arg1)).
 
 %% py_call(+Obj, +Method, +Arg1, +Arg2, -Result): Call method with 2 arguments.
 py_call(Obj, Method, Arg1, Arg2, Result) :-
-    ffi:'spy_invoke2'(Obj, Method, Arg1, Arg2, Result),
-    check_handle(Result, py_call/5).
+    new_handle(Result, py_call/5, ffi:'spy_invoke2'(Obj, Method, Arg1, Arg2)).
 
 %% py_call(+Obj, +Method, +Arg1, +Arg2, +Arg3, -Result): Call method with 3 arguments.
 py_call(Obj, Method, Arg1, Arg2, Arg3, Result) :-
-    ffi:'spy_invoke3'(Obj, Method, Arg1, Arg2, Arg3, Result),
-    check_handle(Result, py_call/6).
+    new_handle(Result, py_call/6, ffi:'spy_invoke3'(Obj, Method, Arg1, Arg2, Arg3)).
 
 py_calln(Obj, Method, Args, Result) :-
-    ( Args = [_|_] ->
+    require_unbound_handle(Result, py_calln/4),
+    ( (Args = [_|_] ; Args = []) ->
         py_list_from_handles(Args, ArgsHandle),
-        with_py(ArgsHandle, (
-            ffi:'spy_invoken'(Obj, Method, ArgsHandle, Result),
-            check_handle(Result, py_calln/4)
-        ))
-    ; Args = [] ->
-        py_list_from_handles([], ArgsHandle),
-        with_py(ArgsHandle, (
-            ffi:'spy_invoken'(Obj, Method, ArgsHandle, Result),
-            check_handle(Result, py_calln/4)
-        ))
-    ; ffi:'spy_invoken'(Obj, Method, Args, Result),
-      check_handle(Result, py_calln/4)
+        with_py(ArgsHandle,
+            new_handle(Result, py_calln/4,
+                       ffi:'spy_invoken'(Obj, Method, ArgsHandle)))
+    ; new_handle(Result, py_calln/4, ffi:'spy_invoken'(Obj, Method, Args))
     ).
 
 %% ---------------------------------------------------------------------------
@@ -404,34 +406,24 @@ py_calln(Obj, Method, Args, Result) :-
 
 %% py_invoke(+Callable, -Result): Call a callable with no arguments.
 py_invoke(Callable, Result) :-
-    ffi:'spy_call0'(Callable, Result),
-    check_handle(Result, py_invoke/2).
+    new_handle(Result, py_invoke/2, ffi:'spy_call0'(Callable)).
 
 %% py_invoke(+Callable, +Arg1, -Result): Call with 1 argument.
 py_invoke(Callable, Arg1, Result) :-
-    ffi:'spy_call1'(Callable, Arg1, Result),
-    check_handle(Result, py_invoke/3).
+    new_handle(Result, py_invoke/3, ffi:'spy_call1'(Callable, Arg1)).
 
 %% py_invoke(+Callable, +Arg1, +Arg2, -Result): Call with 2 arguments.
 py_invoke(Callable, Arg1, Arg2, Result) :-
-    ffi:'spy_call2'(Callable, Arg1, Arg2, Result),
-    check_handle(Result, py_invoke/4).
+    new_handle(Result, py_invoke/4, ffi:'spy_call2'(Callable, Arg1, Arg2)).
 
 py_invoken(Callable, Args, Result) :-
-    ( Args = [_|_] ->
+    require_unbound_handle(Result, py_invoken/3),
+    ( (Args = [_|_] ; Args = []) ->
         py_list_from_handles(Args, ArgsHandle),
-        with_py(ArgsHandle, (
-            ffi:'spy_calln'(Callable, ArgsHandle, Result),
-            check_handle(Result, py_invoken/3)
-        ))
-    ; Args = [] ->
-        py_list_from_handles([], ArgsHandle),
-        with_py(ArgsHandle, (
-            ffi:'spy_calln'(Callable, ArgsHandle, Result),
-            check_handle(Result, py_invoken/3)
-        ))
-    ; ffi:'spy_calln'(Callable, Args, Result),
-      check_handle(Result, py_invoken/3)
+        with_py(ArgsHandle,
+            new_handle(Result, py_invoken/3,
+                       ffi:'spy_calln'(Callable, ArgsHandle)))
+    ; new_handle(Result, py_invoken/3, ffi:'spy_calln'(Callable, Args))
     ).
 
 %% ---------------------------------------------------------------------------
@@ -478,27 +470,22 @@ py_to_bool(Handle, Value) :-
 
 %% py_from_int(+Value, -Handle): Create Python int.
 py_from_int(Value, Handle) :-
-    ffi:'spy_from_int'(Value, Handle),
-    check_handle(Handle, py_from_int/2).
+    new_handle(Handle, py_from_int/2, ffi:'spy_from_int'(Value)).
 
 %% py_from_float(+Value, -Handle): Create Python float.
 py_from_float(Value, Handle) :-
-    ffi:'spy_from_float'(Value, Handle),
-    check_handle(Handle, py_from_float/2).
+    new_handle(Handle, py_from_float/2, ffi:'spy_from_float'(Value)).
 
 %% py_from_bool(+Value, -Handle): Create Python bool.
 %%   py_from_bool(true, H) or py_from_bool(false, H).
 py_from_bool(true, Handle) :- !,
-    ffi:'spy_from_bool'(1, Handle),
-    check_handle(Handle, py_from_bool/2).
+    new_handle(Handle, py_from_bool/2, ffi:'spy_from_bool'(1)).
 py_from_bool(false, Handle) :-
-    ffi:'spy_from_bool'(0, Handle),
-    check_handle(Handle, py_from_bool/2).
+    new_handle(Handle, py_from_bool/2, ffi:'spy_from_bool'(0)).
 
 %% py_from_str(+String, -Handle): Create Python str.
 py_from_str(String, Handle) :-
-    ffi:'spy_from_str'(String, Handle),
-    check_handle(Handle, py_from_str/2).
+    new_handle(Handle, py_from_str/2, ffi:'spy_from_str'(String)).
 
 %% ---------------------------------------------------------------------------
 %% None
@@ -506,8 +493,7 @@ py_from_str(String, Handle) :-
 
 %% py_none(-Handle): Get a handle to Python None.
 py_none(Handle) :-
-    ffi:'spy_none'(Handle),
-    check_handle(Handle, py_none/1).
+    new_handle(Handle, py_none/1, ffi:'spy_none').
 
 %% py_is_none(+Handle): Succeeds if the handle points to None.
 py_is_none(Handle) :-
@@ -532,8 +518,7 @@ py_to_json(Handle, Json) :-
 
 %% py_from_json(+JsonString, -Handle): Deserialize JSON to Python object.
 py_from_json(Json, Handle) :-
-    ffi:'spy_from_json'(Json, Handle),
-    check_handle(Handle, py_from_json/2).
+    new_handle(Handle, py_from_json/2, ffi:'spy_from_json'(Json)).
 
 %% ---------------------------------------------------------------------------
 %% Collections
@@ -541,8 +526,7 @@ py_from_json(Json, Handle) :-
 
 %% py_list_new(-Handle): Create empty Python list.
 py_list_new(Handle) :-
-    ffi:'spy_list_new'(Handle),
-    check_handle(Handle, py_list_new/1).
+    new_handle(Handle, py_list_new/1, ffi:'spy_list_new').
 
 %% py_list_append(+List, +Item): Append item to list.
 py_list_append(List, Item) :-
@@ -551,8 +535,7 @@ py_list_append(List, Item) :-
 
 %% py_list_get(+List, +Index, -Item): Get item at index.
 py_list_get(List, Index, Item) :-
-    ffi:'spy_list_get'(List, Index, Item),
-    check_handle(Item, py_list_get/3).
+    new_handle(Item, py_list_get/3, ffi:'spy_list_get'(List, Index)).
 
 %% py_list_len(+List, -Len): Get list length.
 %% Throws on error instead of returning ambiguous sentinel values.
@@ -563,6 +546,7 @@ py_list_len(List, Len) :-
 
 py_list_from_handles(Handles, List) :-
     must_be(list, Handles),
+    require_unbound_handle(List, py_list_from_handles/2),
     py_list_new(Temp),
     ( catch((py_list_from_handles(Handles, Temp, Temp), List = Temp), Error,
             (py_free(Temp), throw(Error))) ->
@@ -577,8 +561,7 @@ py_list_from_handles([H | Rest], List, Out) :-
 
 %% py_dict_new(-Handle): Create empty Python dict.
 py_dict_new(Handle) :-
-    ffi:'spy_dict_new'(Handle),
-    check_handle(Handle, py_dict_new/1).
+    new_handle(Handle, py_dict_new/1, ffi:'spy_dict_new').
 
 %% py_dict_set(+Dict, +Key, +Value): Set key-value pair (key is atom/string).
 py_dict_set(Dict, Key, Value) :-
@@ -587,8 +570,7 @@ py_dict_set(Dict, Key, Value) :-
 
 %% py_dict_get(+Dict, +Key, -Value): Get value by key.
 py_dict_get(Dict, Key, Value) :-
-    ffi:'spy_dict_get'(Dict, Key, Value),
-    check_handle(Value, py_dict_get/3).
+    new_handle(Value, py_dict_get/3, ffi:'spy_dict_get'(Dict, Key)).
 
 %% ---------------------------------------------------------------------------
 %% Memory Management

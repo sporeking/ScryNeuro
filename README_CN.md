@@ -523,7 +523,7 @@ catch(
 - `with_py_many(Specs, Goal)`：针对多个临时句柄的批量作用域清理。`Specs` 是 `Handle-Acquire` 对组成的列表，按从左到右的顺序获取，按逆序释放。
 - `py_handle_count/1`：诊断工具，返回当前活跃的句柄数量。
 
-经验法则：已有句柄用 `with_py/2`；需要在作用域内创建一个临时句柄时用 `with_py_temp/3`；需要多个临时句柄时用 `with_py_many/2`。
+经验法则：已有句柄用 `with_py/2`；需要在作用域内创建一个临时句柄时用 `with_py_temp/3`；需要多个临时句柄时用 `with_py_many/2`。标为 `-Handle` 的输出参数调用时必须未绑定；已绑定会在创建 Python 对象前报错。如果带约束的输出拒绝新句柄，桥接层会将其释放。后续 Prolog 回溯仍需通过作用域管理句柄。
 
 调用上下文说明：`with_py/2`、`with_py_temp/3` 会保留调用者本地 goal 的上下文，`with_py_many/2` 的 `Goal` 参数也是如此。对于 `with_py_many/2` 的 `Specs` 列表，最稳妥的写法仍然是直接使用 `py_*` 谓词，或者对自定义 helper 显式加上模块限定。
 
