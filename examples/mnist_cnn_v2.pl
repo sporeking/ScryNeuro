@@ -23,9 +23,9 @@
 :- use_module('../prolog/scryer_py').
 
 run_example(Name, Goal) :-
-    ( catch(Goal, E, (format("[ERROR] ~s failed: ~q~n", [Name, E]), fail)) ->
+    ( catch(Goal, E, (format("[ERROR] ~s failed:~n", [Name]), print_py_error(E), halt(1))) ->
         format("[OK] ~s~n", [Name])
-    ; true
+    ; format("[ERROR] ~s failed without an exception.~n", [Name]), halt(1)
     ).
 
 %% ---------------------------------------------------------------------------
@@ -210,8 +210,4 @@ main :-
     format(" Pipeline complete!~n", []),
     format("========================================~n", []).
 
-:- initialization((
-    py_init,
-    run_example("main", main),
-    py_finalize
-)).
+:- initialization(run_example("main", (py_init, main, py_finalize))).

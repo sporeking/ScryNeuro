@@ -389,9 +389,18 @@ test_setattr :-
     py_free(Instance),
     py_free(Cls).
 
+test_missing_library :-
+    catch(
+        ( py_init(""),
+          fail_test('empty library path unexpectedly loaded') ),
+        error(existence_error(source_sink, _), _),
+        format("empty library path: OK~n", [])
+    ).
+
 run_tests :-
     ( catch(
-        setup_call_cleanup(py_init, all_tests, py_finalize),
+        ( test_missing_library,
+          setup_call_cleanup(py_init, all_tests, py_finalize) ),
         Error,
         ( format("Prolog API tests failed: ~q~n", [Error]), halt(1) )
       ) -> halt(0)

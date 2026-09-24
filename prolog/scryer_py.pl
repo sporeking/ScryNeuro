@@ -93,6 +93,7 @@
 ]).
 
 :- use_module(library(ffi)).
+:- use_module(library(files)).
 :- use_module(library(lists)).
 :- use_module(library(format)).
 :- use_module(library(iso_ext)).
@@ -119,7 +120,10 @@
 :- dynamic(initialized/0).
 
 load_ffi(LibPath) :-
-    use_foreign_module(LibPath, [
+    ( file_exists(LibPath) -> true
+    ; throw(error(existence_error(source_sink, LibPath), load_ffi/1))
+    ),
+    ( use_foreign_module(LibPath, [
         % Lifecycle
         'spy_init'([], sint32),
         'spy_init_home'([cstr], sint32),
@@ -178,7 +182,9 @@ load_ffi(LibPath) :-
         'spy_last_error'([], cstr),
         'spy_last_error_clear'([], void),
         'spy_cstr_free'([ptr], void)
-    ]).
+    ]) -> true
+    ; throw(error(foreign_library_load_error(LibPath), load_ffi/1))
+    ).
 
 %% ---------------------------------------------------------------------------
 %% Error Checking
@@ -272,10 +278,10 @@ py_finalize :-
 %% find_lib_in_dir(+Dir, -LibPath): Find libscryneuro in a specific directory.
 find_lib_in_dir(Dir, LibPath) :-
     ( append(Dir, "/libscryneuro.dylib", DylibPath),
-      catch((open(DylibPath, read, S), close(S)), _, fail) ->
+      file_exists(DylibPath) ->
         LibPath = DylibPath
     ; append(Dir, "/libscryneuro.so", SoPath),
-      catch((open(SoPath, read, S), close(S)), _, fail) ->
+      file_exists(SoPath) ->
         LibPath = SoPath
     ; append("Could not find libscryneuro in directory: ", Dir, Msg),
       throw(error(python_error(Msg), py_init/0))
@@ -283,9 +289,9 @@ find_lib_in_dir(Dir, LibPath) :-
 
 %% find_lib_in_cwd(-LibPath): Find libscryneuro in the current directory.
 find_lib_in_cwd(LibPath) :-
-    ( catch((open('./libscryneuro.dylib', read, S), close(S)), _, fail) ->
+    ( file_exists("./libscryneuro.dylib") ->
         LibPath = "./libscryneuro.dylib"
-    ; catch((open('./libscryneuro.so', read, S), close(S)), _, fail) ->
+    ; file_exists("./libscryneuro.so") ->
         LibPath = "./libscryneuro.so"
     ; throw(error(python_error("Could not find libscryneuro.dylib or libscryneuro.so. Set SCRYNEURO_HOME or run from the ScryNeuro directory."), py_init/0))
     ).
@@ -602,6 +608,8 @@ py_last_error(Error) :-
 
 %% print_py_error(+Error): Pretty-print ScryNeuro Python/FFI errors.
 %% Handles error(python_error(Msg), Context) and prints Msg as text when possible.
+print_py_error(error(foreign_library_load_error(Path), _)) :- !,
+    format("Foreign library could not be loaded: ~s~n", [Path]).
 print_py_error(error(python_error(Msg), Context)) :- !,
     format("Python error (~w):~n", [Context]),
     ( Msg = [_|_] -> format("~s~n", [Msg])
