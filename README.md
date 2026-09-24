@@ -486,6 +486,8 @@ Scryer Prolog represents double-quoted strings like `"hello"` as lists of charac
 ### TLS String Buffer
 String-returning FFI functions, such as `py_to_str` or `py_to_json`, write their results into a thread-local storage (TLS) buffer on the Rust side. The Prolog layer immediately copies the contents of this buffer into a Prolog char list. This management is transparent to the user.
 
+A C string cannot represent an embedded NUL byte. `py_to_str/2` and `py_to_repr/2` throw `python_error` for such results instead of returning truncated or substituted text. For a Python string, `py_to_json/2` preserves its content as escaped JSON (for example, `"A\u0000B"`). NUL bytes in exception messages are rendered as `\0` rather than losing the error.
+
 ---
 
 ## API Reference

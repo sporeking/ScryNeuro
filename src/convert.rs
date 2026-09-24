@@ -22,12 +22,11 @@ thread_local! {
 ///
 /// The pointer is valid until the next call to `set_return_str`.
 /// Scryer copies the `cstr` into a Prolog term immediately, so this is safe.
-pub fn set_return_str(s: String) -> *const c_char {
+pub fn set_return_str(s: String) -> Result<*const c_char, String> {
+    let cstr = CString::new(s).map_err(|_| "FFI string contains a NUL byte".to_owned())?;
     RETURN_BUF.with(|cell| {
-        let cstr = CString::new(s)
-            .unwrap_or_else(|_| CString::new("<string contains null byte>").unwrap());
         *cell.borrow_mut() = cstr;
-        cell.borrow().as_ptr()
+        Ok(cell.borrow().as_ptr())
     })
 }
 
@@ -73,4 +72,14 @@ pub fn py_to_json(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<String> {
 pub fn json_to_py<'py>(py: Python<'py>, json_str: &str) -> PyResult<Bound<'py, PyAny>> {
     let json_mod = py.import("json")?;
     json_mod.call_method1("loads", (json_str,))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::set_return_str;
+
+    #[test]
+    fn rejects_embedded_nul_in_c_string() {
+        assert!(set_return_str("A\0B".to_owned()).is_err());
+    }
 }

@@ -58,11 +58,11 @@ fn gil_status(f: impl FnOnce(Python<'_>) -> Result<(), String>) -> i32 {
 /// Acquire GIL, run closure, return string via TLS buffer ("" on error).
 fn gil_str(f: impl FnOnce(Python<'_>) -> Result<String, String>) -> *const c_char {
     clear_last_error();
-    Python::with_gil(|py| match f(py) {
-        Ok(s) => convert::set_return_str(s),
+    Python::with_gil(|py| match f(py).and_then(convert::set_return_str) {
+        Ok(ptr) => ptr,
         Err(e) => {
             set_last_error(e);
-            convert::set_return_str(String::new())
+            b"\0".as_ptr().cast()
         }
     })
 }

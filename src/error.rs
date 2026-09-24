@@ -20,9 +20,9 @@ thread_local! {
 
 /// Store an error message in thread-local storage.
 pub fn set_last_error(msg: impl Into<String>) {
-    let msg = msg.into();
+    let msg = msg.into().replace('\0', "\\0");
     LAST_ERROR.with(|cell| {
-        *cell.borrow_mut() = CString::new(msg).ok();
+        *cell.borrow_mut() = Some(CString::new(msg).expect("NUL bytes were escaped"));
     });
 }
 
@@ -64,5 +64,22 @@ pub extern "C" fn spy_last_error_clear() {
 pub unsafe extern "C" fn spy_cstr_free(ptr: *mut c_char) {
     if !ptr.is_null() {
         drop(unsafe { CString::from_raw(ptr) });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::CStr;
+
+    use super::{clear_last_error, set_last_error, spy_last_error};
+
+    #[test]
+    fn keeps_error_messages_with_embedded_nul() {
+        set_last_error("A\0B");
+        let message = unsafe { CStr::from_ptr(spy_last_error()) }
+            .to_str()
+            .unwrap();
+        assert_eq!(message, "A\\0B");
+        clear_last_error();
     }
 }

@@ -7,6 +7,7 @@
 :- op(700, xfx, :=).
 :- use_module('../prolog/scryer_py').
 :- use_module(library(format)).
+:- use_module(library(lists)).
 :- use_module(library(iso_ext)).
 
 fail_test(Label) :-
@@ -243,6 +244,34 @@ test_error_handling :-
         format("17. error handling: OK~n", [])
     ) -> true ; fail_test('17. error handling') ).
 
+test_nul_string :-
+    py_eval("'A' + chr(0) + 'B'", H),
+    with_py(H, (
+        catch(
+            ( py_to_str(H, _), fail_test('NUL string unexpectedly succeeded') ),
+            error(python_error(Msg), py_to_str/2),
+            ( Msg = "FFI string contains a NUL byte" -> true
+            ; fail_test('NUL string lost error') )
+        ),
+        py_to_json(H, Json),
+        ( Json = "\"A\\u0000B\"" ->
+            format("NUL string and JSON: OK~n", [])
+        ; fail_test('NUL JSON roundtrip')
+        )
+    )).
+
+test_nul_error :-
+    catch(
+        ( py_exec("raise ValueError('A' + chr(0) + 'B')"),
+          fail_test('NUL exception unexpectedly succeeded') ),
+        error(python_error(Msg), py_exec/1),
+        ( char_code(Backslash, 92),
+          append(_, ['A', Backslash, '0', 'B' | _], Msg) ->
+            format("NUL exception message: OK~n", [])
+        ; fail_test('NUL exception lost error')
+        )
+    ).
+
 test_with_py :-
     py_handle_count(Before),
     py_eval("42", H),
@@ -425,6 +454,8 @@ all_tests :-
     test_json,
     test_from_to,
     test_error_handling,
+    test_nul_string,
+    test_nul_error,
     test_with_py,
     test_with_py_failure,
     test_with_py_exception,
@@ -440,6 +471,6 @@ all_tests :-
     test_with_py_many_local_goal_context,
     test_with_py_many_explicit_qualified_acquire,
     test_setattr,
-    format("=== ALL 32 PROLOG API TESTS PASSED ===~n", []).
+    format("=== ALL 34 PROLOG API TESTS PASSED ===~n", []).
 
 :- initialization(run_tests).
