@@ -426,6 +426,35 @@ test_missing_library :-
         format("empty library path: OK~n", [])
     ).
 
+test_list_build_failures :-
+    py_handle_count(Before),
+    catch(
+        ( py_list_from_handles(42, _), fail_test('invalid list input accepted') ),
+        error(type_error(list, 42), _),
+        true
+    ),
+    catch(
+        ( py_list_from_handles(_, _), fail_test('unbound list input accepted') ),
+        error(instantiation_error, _),
+        true
+    ),
+    report_handle_cleanup('invalid list input', Before),
+    with_py_temp(py_from_int(7, H), H, (
+        py_handle_count(During),
+        catch(
+            ( py_list_from_handles([H, 0], _),
+              fail_test('invalid list element accepted') ),
+            error(python_error(Msg), py_list_append/2),
+            ( Msg = [_|_] -> true ; fail_test('list append lost error') )
+        ),
+        report_handle_cleanup('list append failure', During)
+    )),
+    ( py_list_from_handles([], -1) ->
+        fail_test('pre-bound output accepted')
+    ; true
+    ),
+    report_handle_cleanup('pre-bound list output', Before).
+
 test_stale_handles :-
     py_handle_count(Before),
     py_from_int(7, Old),
@@ -467,6 +496,7 @@ all_tests :-
     test_operator_method_call,
     test_operator_method_call_many,
     test_collections,
+    test_list_build_failures,
     test_none,
     test_json,
     test_from_to,
@@ -489,6 +519,6 @@ all_tests :-
     test_with_py_many_explicit_qualified_acquire,
     test_setattr,
     test_stale_handles,
-    format("=== ALL 35 PROLOG API TESTS PASSED ===~n", []).
+    format("=== ALL 36 PROLOG API TESTS PASSED ===~n", []).
 
 :- initialization(run_tests).

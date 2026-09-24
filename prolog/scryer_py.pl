@@ -93,6 +93,7 @@
 ]).
 
 :- use_module(library(ffi)).
+:- use_module(library(error)).
 :- use_module(library(files)).
 :- use_module(library(lists)).
 :- use_module(library(format)).
@@ -560,8 +561,13 @@ py_list_len(List, Len) :-
     ensure_no_last_error(py_list_len/2).
 
 py_list_from_handles(Handles, List) :-
-    py_list_new(List),
-    py_list_from_handles(Handles, List, List).
+    must_be(list, Handles),
+    py_list_new(Temp),
+    ( catch((py_list_from_handles(Handles, Temp, Temp), List = Temp), Error,
+            (py_free(Temp), throw(Error))) ->
+        true
+    ; py_free(Temp), fail
+    ).
 
 py_list_from_handles([], List, List).
 py_list_from_handles([H | Rest], List, Out) :-
