@@ -44,28 +44,44 @@ test :-
     ffi:'spy_eval'("1 + 2", H),
     ( H =\= 0 ->
         ffi:'spy_to_int'(H, V),
+        ( V =:= 3 -> true
+        ; throw(error(test_failed(spy_to_int), test_smoke/0))
+        ),
         write('1 + 2 = '), write(V), nl,
         ffi:'spy_drop'(H)
     ; ffi:'spy_last_error'(Err2),
-      print_py_error(error(python_error(Err2), spy_eval/2))
+      throw(error(python_error(Err2), spy_eval/2))
     ),
 
     %% 3. Evaluate a string
     ffi:'spy_eval'("'hello world'", H2),
     ( H2 =\= 0 ->
         ffi:'spy_to_str'(H2, S),
+        ( S = "hello world" -> true
+        ; throw(error(test_failed(spy_to_str), test_smoke/0))
+        ),
         write('String: '), write(S), nl,
         ffi:'spy_drop'(H2)
     ; ffi:'spy_last_error'(Err3),
-      print_py_error(error(python_error(Err3), spy_eval/2))
+      throw(error(python_error(Err3), spy_eval/2))
     ),
 
     %% 4. Check handle count
     ffi:'spy_handle_count'(Count),
+    ( Count =:= 0 -> true
+    ; throw(error(test_failed(handle_count(Count)), test_smoke/0))
+    ),
     write('Live handles: '), write(Count), nl,
 
     %% 5. Finalize
     ffi:'spy_finalize',
     write('All tests passed!'), nl.
 
-:- initialization((init, test)).
+run_tests :-
+    ( catch((init, test), Error,
+            ( write('Smoke tests failed: '), writeq(Error), nl, halt(1) )) ->
+        halt(0)
+    ; write('Smoke tests failed without an exception.'), nl, halt(1)
+    ).
+
+:- initialization(run_tests).

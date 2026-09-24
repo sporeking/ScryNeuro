@@ -7,12 +7,16 @@
 :- op(700, xfx, :=).
 :- use_module('../prolog/scryer_py').
 :- use_module(library(format)).
+:- use_module(library(iso_ext)).
+
+fail_test(Label) :-
+    throw(error(test_failed(Label), test_prolog_api/0)).
 
 report_handle_cleanup(Label, Before) :-
     py_handle_count(After),
     ( After =:= Before ->
         format("~w: OK~n", [Label])
-    ; format("~w: FAIL (handles before=~d, after=~d)~n", [Label, Before, After])
+    ; throw(error(handle_leak(Label, Before, After), test_prolog_api/0))
     ).
 
 local_acquire_int(Value, Handle) :-
@@ -32,7 +36,7 @@ test_eval :-
     py_to_int(H, V),
     ( V =:= 1024 ->
         format("1. py_eval: OK~n", [])
-    ; format("1. py_eval: FAIL~n", [])
+    ; fail_test('1. py_eval')
     ),
     py_free(H).
 
@@ -42,7 +46,7 @@ test_exec :-
     py_to_int(H, V),
     ( V =:= 42 ->
         format("2. py_exec: OK~n", [])
-    ; format("2. py_exec: FAIL~n", [])
+    ; fail_test('2. py_exec')
     ),
     py_free(H).
 
@@ -52,7 +56,7 @@ test_import :-
     py_to_float(Pi, PiVal),
     ( PiVal > 3.14, PiVal < 3.15 ->
         format("3. py_import/getattr: OK~n", [])
-    ; format("3. py_import/getattr: FAIL~n", [])
+    ; fail_test('3. py_import/getattr')
     ),
     py_free(Pi),
     py_free(M).
@@ -63,7 +67,7 @@ test_py_call_0 :-
     py_to_str(Result, Str),
     ( Str = "HELLO WORLD" ->
         format("4. py_call/3 (0 args): OK~n", [])
-    ; format("4. py_call/3 (0 args): FAIL~n", [])
+    ; fail_test('4. py_call/3 (0 args)')
     ),
     py_free(Result),
     py_free(S).
@@ -76,7 +80,7 @@ test_py_call_2 :-
     py_to_str(Result, Str),
     ( Str = "hello prolog" ->
         format("5. py_call/5 (2 args): OK~n", [])
-    ; format("5. py_call/5 (2 args): FAIL~n", [])
+    ; fail_test('5. py_call/5 (2 args)')
     ),
     py_free(Result),
     py_free(New),
@@ -89,7 +93,7 @@ test_py_invoke_0 :-
     py_list_len(Result, Len),
     ( Len =:= 0 ->
         format("6. py_invoke/2 (0 args): OK~n", [])
-    ; format("6. py_invoke/2 (0 args): FAIL~n", [])
+    ; fail_test('6. py_invoke/2 (0 args)')
     ),
     py_free(Result),
     py_free(ListClass).
@@ -102,7 +106,7 @@ test_py_invoke_1 :-
     py_to_int(Result, V),
     ( V =:= 42 ->
         format("7. py_invoke/3 (1 arg): OK~n", [])
-    ; format("7. py_invoke/3 (1 arg): FAIL~n", [])
+    ; fail_test('7. py_invoke/3 (1 arg)')
     ),
     py_free(Result),
     py_free(Arg),
@@ -116,7 +120,7 @@ test_py_invoke_2 :-
     py_to_int(Result, V),
     ( V =:= 1024 ->
         format("8. py_invoke/4 (2 args): OK~n", [])
-    ; format("8. py_invoke/4 (2 args): FAIL~n", [])
+    ; fail_test('8. py_invoke/4 (2 args)')
     ),
     py_free(Result),
     py_free(Exp),
@@ -133,7 +137,7 @@ test_py_invoken :-
     py_to_int(Result, V),
     ( V =:= 10 ->
         format("9. py_invoken/3 (list args): OK~n", [])
-    ; format("9. py_invoken/3 (list args): FAIL~n", [])
+    ; fail_test('9. py_invoken/3 (list args)')
     ),
     py_free(Result),
     py_free(A4),
@@ -148,7 +152,7 @@ test_operator_sugar :-
     py_to_float(Pi, PiVal),
     ( PiVal > 3.14, PiVal < 3.15 ->
         format("10. := operator: OK~n", [])
-    ; format("10. := operator: FAIL~n", [])
+    ; fail_test('10. := operator')
     ),
     py_free(Pi),
     py_free(Math).
@@ -159,7 +163,7 @@ test_operator_method_call :-
     py_to_str(Result, Str),
     ( Str = "HELLO WORLD" ->
         format("11. := method call: OK~n", [])
-    ; format("11. := method call: FAIL~n", [])
+    ; fail_test('11. := method call')
     ),
     py_free(Result),
     py_free(S).
@@ -176,7 +180,7 @@ test_operator_method_call_many :-
     py_to_int(Result, V),
     ( V =:= 15 ->
         format("12. := method call (many args): OK~n", [])
-    ; format("12. := method call (many args): FAIL~n", [])
+    ; fail_test('12. := method call (many args)')
     ),
     py_free(Result),
     py_free(A5),
@@ -197,7 +201,7 @@ test_collections :-
     py_to_int(Item, ItemVal),
     ( Len =:= 2, ItemVal =:= 10 ->
         format("13. collections: OK~n", [])
-    ; format("13. collections: FAIL~n", [])
+    ; fail_test('13. collections')
     ),
     py_free(Item),
     py_free(V2),
@@ -208,14 +212,17 @@ test_none :-
     py_none(N),
     ( py_is_none(N) ->
         format("14. none/is_none: OK~n", [])
-    ; format("14. none/is_none: FAIL~n", [])
+    ; fail_test('14. none/is_none')
     ),
     py_free(N).
 
 test_json :-
     py_from_json("[1, 2, 3]", H),
     py_to_json(H, Json),
-    format("15. JSON roundtrip: ~w~n", [Json]),
+    ( Json = "[1, 2, 3]" ->
+        format("15. JSON roundtrip: OK~n", [])
+    ; fail_test('15. JSON roundtrip')
+    ),
     py_free(H).
 
 test_from_to :-
@@ -225,18 +232,16 @@ test_from_to :-
     py_from_str("test", H4), py_to_str(H4, V4),
     ( V1 =:= 42, V2 > 3.13, V2 < 3.15, V3 = true, V4 = "test" ->
         format("16. from/to conversions: OK~n", [])
-    ; format("16. from/to conversions: FAIL~n", [])
+    ; fail_test('16. from/to conversions')
     ),
     py_free(H4), py_free(H3), py_free(H2), py_free(H1).
 
 test_error_handling :-
     ( catch(
-        py_eval("1/0", _),
-        Error,
-        ( print_py_error(Error),
-          format("17. error handling: OK~n", [])
-        )
-    ) -> true ; format("17. error handling: FAIL~n", []) ).
+        ( py_eval("1/0", _), fail_test('17. error handling (no exception)') ),
+        error(python_error(_), _),
+        format("17. error handling: OK~n", [])
+    ) -> true ; fail_test('17. error handling') ).
 
 test_with_py :-
     py_handle_count(Before),
@@ -251,7 +256,7 @@ test_with_py_failure :-
     py_handle_count(Before),
     py_eval("42", H),
     ( with_py(H, fail) ->
-        format("19. with_py (failure): FAIL (goal unexpectedly succeeded)~n", [])
+        fail_test('19. with_py (failure)')
     ; report_handle_cleanup('19. with_py (failure)', Before)
     ).
 
@@ -259,7 +264,8 @@ test_with_py_exception :-
     py_handle_count(Before),
     py_eval("42", H),
     catch(
-        with_py(H, throw(test_with_py_exception)),
+        ( with_py(H, throw(test_with_py_exception)),
+          fail_test('20. with_py (exception not propagated)') ),
         test_with_py_exception,
         true
     ),
@@ -276,7 +282,8 @@ test_with_py_temp :-
 test_with_py_temp_exception :-
     py_handle_count(Before),
     catch(
-        with_py_temp(py_eval("42", H), H, throw(test_with_py_temp_exception)),
+        ( with_py_temp(py_eval("42", H), H, throw(test_with_py_temp_exception)),
+          fail_test('22. with_py_temp (exception not propagated)') ),
         test_with_py_temp_exception,
         true
     ),
@@ -285,7 +292,7 @@ test_with_py_temp_exception :-
 test_with_py_temp_acquire_failure :-
     py_handle_count(Before),
     ( with_py_temp(fail, _H, true) ->
-        format("23. with_py_temp (acquire failure): FAIL (acquire unexpectedly succeeded)~n", [])
+        fail_test('23. with_py_temp (acquire failure)')
     ; report_handle_cleanup('23. with_py_temp (acquire failure)', Before)
     ).
 
@@ -309,17 +316,18 @@ test_with_py_many_failure :-
           H1-py_from_int(1, H1),
           H2-py_from_int(2, H2)
       ], fail) ->
-        format("25. with_py_many (failure): FAIL (goal unexpectedly succeeded)~n", [])
+        fail_test('25. with_py_many (failure)')
     ; report_handle_cleanup('25. with_py_many (failure)', Before)
     ).
 
 test_with_py_many_exception :-
     py_handle_count(Before),
     catch(
-        with_py_many([
-            H1-py_from_int(1, H1),
-            H2-py_from_int(2, H2)
-        ], throw(test_with_py_many_exception)),
+        ( with_py_many([
+              H1-py_from_int(1, H1),
+              H2-py_from_int(2, H2)
+          ], throw(test_with_py_many_exception)),
+          fail_test('26. with_py_many (exception not propagated)') ),
         test_with_py_many_exception,
         true
     ),
@@ -328,10 +336,11 @@ test_with_py_many_exception :-
 test_with_py_many_partial_acquire :-
     py_handle_count(Before),
     catch(
-        with_py_many([
-            H1-py_from_int(1, H1),
-            H2-py_eval("1/0", H2)
-        ], true),
+        ( with_py_many([
+              H1-py_from_int(1, H1),
+              H2-py_eval("1/0", H2)
+          ], true),
+          fail_test('27. with_py_many (acquire did not throw)') ),
         error(python_error(_), _),
         true
     ),
@@ -373,15 +382,23 @@ test_setattr :-
     py_to_int(Got, V),
     ( V =:= 99 ->
         format("32. setattr/getattr: OK~n", [])
-    ; format("32. setattr/getattr: FAIL~n", [])
+    ; fail_test('32. setattr/getattr')
     ),
     py_free(Got),
     py_free(Val),
     py_free(Instance),
     py_free(Cls).
 
-:- initialization((
-    py_init,
+run_tests :-
+    ( catch(
+        setup_call_cleanup(py_init, all_tests, py_finalize),
+        Error,
+        ( format("Prolog API tests failed: ~q~n", [Error]), halt(1) )
+      ) -> halt(0)
+    ; format("Prolog API tests failed without an exception.~n", []), halt(1)
+    ).
+
+all_tests :-
     test_eval,
     test_exec,
     test_import,
@@ -414,6 +431,6 @@ test_setattr :-
     test_with_py_many_local_goal_context,
     test_with_py_many_explicit_qualified_acquire,
     test_setattr,
-    format("=== ALL 32 PROLOG API TESTS PASSED ===~n", []),
-    py_finalize
-)).
+    format("=== ALL 32 PROLOG API TESTS PASSED ===~n", []).
+
+:- initialization(run_tests).

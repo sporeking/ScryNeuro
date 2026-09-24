@@ -1,4 +1,5 @@
 :- use_module(library(ffi)).
+:- use_module(library(iso_ext)).
 
 lib_path(Path) :-
     ( catch((open('./libscryneuro.dylib', read, S), close(S)), _, fail) ->
@@ -27,19 +28,40 @@ init :-
     ]) -> true ; throw(error("Failed to load foreign module (check DYLD_LIBRARY_PATH on macOS or LD_LIBRARY_PATH on Linux)", init/0))).
 
 test :-
-    ffi:'spy_init'(_),
+    ffi:'spy_init'(Status),
+    ( Status =:= 0 -> true
+    ; throw(error(test_failed(spy_init), test_pi/0))
+    ),
+    setup_call_cleanup(true, test_pi, ffi:'spy_finalize').
+
+test_pi :-
     write('importing math...'), nl,
     ffi:'spy_import'("math", HM),
+    ( HM =\= 0 -> true
+    ; throw(error(test_failed(py_import), test_pi/0))
+    ),
     write('math handle: '), write(HM), nl,
     write('getting pi...'), nl,
     ffi:'spy_getattr'(HM, "pi", HPI),
+    ( HPI =\= 0 -> true
+    ; throw(error(test_failed(py_getattr), test_pi/0))
+    ),
     write('pi handle: '), write(HPI), nl,
     write('converting to float...'), nl,
     ffi:'spy_to_float'(HPI, VPI),
     write('pi = '), write(VPI), nl,
+    ( VPI > 3.14, VPI < 3.15 -> true
+    ; throw(error(test_failed(py_to_float), test_pi/0))
+    ),
     ffi:'spy_drop'(HPI),
     ffi:'spy_drop'(HM),
-    ffi:'spy_finalize',
-    write('done'), nl.
+    write('pi test passed'), nl.
 
-:- initialization((init, test)).
+run_tests :-
+    ( catch((init, test), Error,
+            ( write('Pi test failed: '), writeq(Error), nl, halt(1) )) ->
+        halt(0)
+    ; write('Pi test failed without an exception.'), nl, halt(1)
+    ).
+
+:- initialization(run_tests).
