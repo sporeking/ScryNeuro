@@ -1395,6 +1395,18 @@ LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/basic.pl
 
 ---
 
+## Benchmarks
+
+Build the release library for the active `python3` environment, then run:
+
+```bash
+SCRYNEURO_HOME="$(pwd)/target/release" bash benchmark/run_benchmarks.sh 10000
+```
+
+On macOS and Linux, the runner warms up each of eight operations 100 times, measures five rounds, and reports median and min/max time per operation. FFI measurements also include the Prolog loop and handle creation and release; subtracting the two results does not isolate FFI overhead. The separate MNIST benchmarks are not included.
+
+---
+
 ## Troubleshooting
 
 ### `error(existence_error(source_sink, library(ffi)), ...)`

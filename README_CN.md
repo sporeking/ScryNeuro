@@ -958,6 +958,18 @@ LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/rl_demo.pl
 
 ---
 
+## 性能测量
+
+先用当前 `python3` 对应的 Python 环境构建 release 库，再运行：
+
+```bash
+SCRYNEURO_HOME="$(pwd)/target/release" bash benchmark/run_benchmarks.sh 10000
+```
+
+脚本在 macOS 和 Linux 上对八组操作各预热 100 次、测量 5 轮，报告每次操作耗时的中位数及最小/最大值。FFI 一侧还包含 Prolog 循环、句柄创建与释放等成本；两侧数字不能相减当作纯 FFI 开销。MNIST 基准未包含在该脚本中。
+
+---
+
 ## 常见问题排查
 
 ### `error(existence_error(source_sink, library(ffi)), ...)`
