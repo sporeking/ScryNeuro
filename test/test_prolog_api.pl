@@ -426,6 +426,15 @@ test_missing_library :-
         format("empty library path: OK~n", [])
     ).
 
+test_atom_library_path :-
+    Path = './libscryneuro.dylib',
+    catch(
+        ( py_init(Path),
+          fail_test('atom library path accepted') ),
+        error(type_error(list, Path), _),
+        format("atom library path: OK~n", [])
+    ).
+
 test_list_build_failures :-
     py_handle_count(Before),
     catch(
@@ -475,6 +484,7 @@ test_stale_handles :-
 run_tests :-
     ( catch(
         ( test_missing_library,
+          test_atom_library_path,
           setup_call_cleanup(py_init, all_tests, py_finalize) ),
         Error,
         ( format("Prolog API tests failed: ~q~n", [Error]), halt(1) )

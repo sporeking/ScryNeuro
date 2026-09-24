@@ -242,6 +242,7 @@ py_init :-
     ).
 
 %% py_init/1: Initialize with a custom library path.
+%% LibPath must be a double-quoted character list, not an atom.
 %% The SCRYNEURO_HOME env var (if set) is still used for sys.path.
 py_init(LibPath) :-
     ( initialized -> true

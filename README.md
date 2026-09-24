@@ -501,6 +501,7 @@ Initialize the Python interpreter with the default library path `./libscryneuro.
 
 #### py_init/1
 Initialize the interpreter with a custom path to the shared library. This is also idempotent.
+When initializing, `Path` must be a double-quoted Prolog string (a character list), such as `"/opt/lib/libscryneuro.so"`. A single-quoted atom path raises a type error.
 
 | Parameter | Type   | Description                     |
 | --------- | ------ | ------------------------------- |
