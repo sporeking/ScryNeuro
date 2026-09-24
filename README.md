@@ -448,6 +448,7 @@ The registry, managed by `src/registry.rs`, is a thread-safe (Mutex-protected) H
 - Every `py_eval`, `py_import`, `py_from_*`, or similar function creates a new entry in the registry and increments the Python object's reference count.
 - Calling `py_free/1` removes the entry from the registry and decrements the Python object's reference count.
 - Once freed, a handle becomes invalid. Using a freed handle will result in an error.
+- Handle IDs are never reused within a process, including after `py_finalize/0` and `py_init/0`; handles from an earlier session remain invalid.
 
 ### Error Handling and Sentinel Patterns
 At the Rust FFI level, three primary patterns are used:
@@ -513,7 +514,7 @@ Initialize the interpreter using an explicit ScryNeuro root directory. The share
 | Home      | String | Absolute path to the ScryNeuro root directory |
 
 #### py_finalize/0
-Shuts down the Python interpreter, clears the handle registry, and retracts the initialization flag. It is safe to call even if the interpreter wasn't initialized.
+Drops all registered Python object handles and retracts the Prolog initialization flag. It does **not** shut down the embedded Python interpreter: imported modules and Python global state may remain when you call `py_init/0` again. Old handles stay invalid. It is safe to call even if the bridge wasn't initialized.
 
 **Example:**
 ```prolog
@@ -522,7 +523,7 @@ Shuts down the Python interpreter, clears the handle registry, and retracts the 
 main :-
     py_init,                % Initialize with default path
     % ... your code ...
-    py_finalize.            % Clean shutdown
+    py_finalize.            % Release bridge handles
 
 main_custom :-
     py_init("/opt/lib/libscryneuro.so"),  % Custom path

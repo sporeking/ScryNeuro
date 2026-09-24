@@ -426,6 +426,23 @@ test_missing_library :-
         format("empty library path: OK~n", [])
     ).
 
+test_stale_handles :-
+    py_handle_count(Before),
+    py_from_int(7, Old),
+    py_finalize,
+    py_init,
+    py_from_int(99, New),
+    ( Old =\= New -> true ; fail_test('handle reused after reinitialization') ),
+    catch(
+        ( py_to_int(Old, _), fail_test('stale handle accepted') ),
+        error(python_error(Msg), py_to_int/2),
+        ( Msg = [_|_] -> true ; fail_test('stale handle lost error') )
+    ),
+    py_to_int(New, Value),
+    ( Value =:= 99 -> true ; fail_test('new handle points to wrong object') ),
+    py_free(New),
+    report_handle_cleanup('stale handle after reinitialization', Before).
+
 run_tests :-
     ( catch(
         ( test_missing_library,
@@ -471,6 +488,7 @@ all_tests :-
     test_with_py_many_local_goal_context,
     test_with_py_many_explicit_qualified_acquire,
     test_setattr,
-    format("=== ALL 34 PROLOG API TESTS PASSED ===~n", []).
+    test_stale_handles,
+    format("=== ALL 35 PROLOG API TESTS PASSED ===~n", []).
 
 :- initialization(run_tests).

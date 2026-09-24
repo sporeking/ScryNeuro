@@ -8,23 +8,24 @@
 //! without holding the GIL, but the GIL must be held when dropping them.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicIsize, Ordering};
 use std::sync::Mutex;
 
 use pyo3::prelude::*;
 
 /// Global handle registry, initialized by `spy_init()`.
 static REGISTRY: Mutex<Option<HandleRegistry>> = Mutex::new(None);
+// A Prolog integer from a previous registry must never identify a new object.
+static NEXT_HANDLE_ID: AtomicIsize = AtomicIsize::new(1);
 
 struct HandleRegistry {
     objects: HashMap<isize, Py<PyAny>>,
-    next_id: isize,
 }
 
 impl HandleRegistry {
     fn new() -> Self {
         Self {
             objects: HashMap::new(),
-            next_id: 1,
         }
     }
 }
@@ -50,11 +51,11 @@ pub fn insert(obj: Py<PyAny>) -> Result<isize, String> {
     let reg = guard
         .as_mut()
         .ok_or("ScryNeuro not initialized. Call spy_init() first.")?;
-    let id = reg.next_id;
-    reg.next_id = reg
-        .next_id
-        .checked_add(1)
-        .ok_or("Handle counter overflow")?;
+    let id = NEXT_HANDLE_ID
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
+            next.checked_add(1)
+        })
+        .map_err(|_| "Handle counter overflow")?;
     reg.objects.insert(id, obj);
     Ok(id)
 }
