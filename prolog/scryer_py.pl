@@ -434,29 +434,33 @@ py_invoken(Callable, Args, Result) :-
 %% Throws on conversion failure.
 py_to_str(Handle, String) :-
     clear_last_error,
-    ffi:'spy_to_str'(Handle, String),
-    ensure_no_last_error(py_to_str/2).
+    ffi:'spy_to_str'(Handle, Raw),
+    ensure_no_last_error(py_to_str/2),
+    String = Raw.
 
 %% py_to_repr(+Handle, -String): Get repr(obj).
 %% Throws on conversion failure.
 py_to_repr(Handle, String) :-
     clear_last_error,
-    ffi:'spy_to_repr'(Handle, String),
-    ensure_no_last_error(py_to_repr/2).
+    ffi:'spy_to_repr'(Handle, Raw),
+    ensure_no_last_error(py_to_repr/2),
+    String = Raw.
 
 %% py_to_int(+Handle, -Value): Extract integer.
 %% Throws on conversion failure (no ambiguous sentinel handling).
 py_to_int(Handle, Value) :-
     clear_last_error,
-    ffi:'spy_to_int'(Handle, Value),
-    ensure_no_last_error(py_to_int/2).
+    ffi:'spy_to_int'(Handle, Raw),
+    ensure_no_last_error(py_to_int/2),
+    Value = Raw.
 
 %% py_to_float(+Handle, -Value): Extract float.
 %% Throws on conversion failure (no ambiguous sentinel handling).
 py_to_float(Handle, Value) :-
     clear_last_error,
-    ffi:'spy_to_float'(Handle, Value),
-    ensure_no_last_error(py_to_float/2).
+    ffi:'spy_to_float'(Handle, Raw),
+    ensure_no_last_error(py_to_float/2),
+    Value = Raw.
 
 %% py_to_bool(+Handle, -Value): Extract boolean (true/false).
 py_to_bool(Handle, Value) :-
@@ -513,8 +517,9 @@ py_is_none(Handle) :-
 %% Throws on serialization failure.
 py_to_json(Handle, Json) :-
     clear_last_error,
-    ffi:'spy_to_json'(Handle, Json),
-    ensure_no_last_error(py_to_json/2).
+    ffi:'spy_to_json'(Handle, Raw),
+    ensure_no_last_error(py_to_json/2),
+    Json = Raw.
 
 %% py_from_json(+JsonString, -Handle): Deserialize JSON to Python object.
 py_from_json(Json, Handle) :-
@@ -541,8 +546,9 @@ py_list_get(List, Index, Item) :-
 %% Throws on error instead of returning ambiguous sentinel values.
 py_list_len(List, Len) :-
     clear_last_error,
-    ffi:'spy_list_len'(List, Len),
-    ensure_no_last_error(py_list_len/2).
+    ffi:'spy_list_len'(List, Raw),
+    ensure_no_last_error(py_list_len/2),
+    Len = Raw.
 
 py_list_from_handles(Handles, List) :-
     must_be(list, Handles),
@@ -585,8 +591,9 @@ py_free(Handle) :-
 %% py_handle_count(-Count): Number of live handles (diagnostic).
 py_handle_count(Count) :-
     clear_last_error,
-    ffi:'spy_handle_count'(Count),
-    ensure_no_last_error(py_handle_count/1).
+    ffi:'spy_handle_count'(Raw),
+    ensure_no_last_error(py_handle_count/1),
+    Count = Raw.
 
 %% py_last_error(-Error): Get last error message (empty if none).
 py_last_error(Error) :-
