@@ -13,3 +13,6 @@ crate-type = ["cdylib"]
 [dependencies]
 pyo3 = "0.23"
 libc = "0.2"
+
+[build-dependencies]
+pyo3-build-config = { version = "0.23", features = ["resolve-config"] }

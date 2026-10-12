@@ -1,32 +1,71 @@
-use std::process::Command;
+use std::{path::Path, process::Command};
 
 fn main() {
-    // Detect Python version and configure library path for linking.
-    // PyO3's build script handles most of this, but we add extra guidance
-    // for finding libpython when building the cdylib.
+    println!("cargo:rerun-if-env-changed=PYO3_PYTHON");
+    println!("cargo:rerun-if-env-changed=PYO3_CONFIG_FILE");
+    println!("cargo:rerun-if-env-changed=PYO3_USE_ABI3_FORWARD_COMPATIBILITY");
+    println!("cargo:rerun-if-env-changed=PATH");
 
-    // Print Python version for build diagnostics
-    if let Ok(output) = Command::new("python3").args(["--version"]).output() {
-        if output.status.success() {
-            let version = String::from_utf8_lossy(&output.stdout);
-            println!("cargo:warning=Building with {}", version.trim());
-        }
-    }
-
-    // Get Python's lib directory and add it to the linker search path
-    if let Ok(output) = Command::new("python3")
+    // Use the exact configuration shared with PyO3, including its default
+    // interpreter discovery and explicit PYO3_CONFIG_FILE selection.
+    let config = pyo3_build_config::get();
+    let python = config.executable.as_deref().expect(
+        "PyO3 configuration has no runnable Python interpreter; ScryNeuro requires a local shared Python library",
+    );
+    assert!(
+        config.shared,
+        "PyO3 selected Python without a shared library"
+    );
+    let output = Command::new(python)
         .args([
             "-c",
-            "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))",
+            "import sys, sysconfig; print(sys.version.split()[0]); print(sysconfig.get_config_var('LIBDIR') or ''); print(sysconfig.get_config_var('LDLIBRARY') or '')",
         ])
         .output()
-    {
-        if output.status.success() {
-            let libdir = String::from_utf8_lossy(&output.stdout);
-            let libdir = libdir.trim();
-            if !libdir.is_empty() && libdir != "None" {
-                println!("cargo:rustc-link-search=native={libdir}");
-            }
-        }
+        .unwrap_or_else(|err| panic!("Cannot run PyO3-selected Python interpreter {python:?}: {err}"));
+    assert!(
+        output.status.success(),
+        "Cannot query PyO3-selected Python interpreter {python:?}: {}",
+        String::from_utf8_lossy(&output.stderr).trim()
+    );
+    let metadata = String::from_utf8(output.stdout).expect("Python metadata is not UTF-8");
+    let fields: Vec<_> = metadata.lines().collect();
+    assert!(
+        fields.len() == 3
+            && fields
+                .iter()
+                .all(|field| !field.is_empty() && *field != "None"),
+        "Python {python:?} did not report version, LIBDIR and LDLIBRARY"
+    );
+    let (version, libdir, ldlibrary) = (fields[0], fields[1], fields[2]);
+    assert_eq!(
+        version.split('.').take(2).collect::<Vec<_>>().join("."),
+        config.version.to_string(),
+        "Python version differs from PyO3's actual build configuration"
+    );
+    let library = Path::new(libdir).join(ldlibrary);
+    assert!(
+        library.is_file(),
+        "Required Python shared library does not exist: {} (interpreter {python:?})",
+        library.display()
+    );
+    if let Some(config_libdir) = config.lib_dir.as_deref() {
+        assert_eq!(
+            Path::new(libdir)
+                .canonicalize()
+                .expect("Cannot resolve Python LIBDIR"),
+            Path::new(config_libdir)
+                .canonicalize()
+                .expect("Cannot resolve PyO3 library directory"),
+            "Python LIBDIR differs from PyO3's actual linker directory"
+        );
     }
+    println!("cargo:warning=Building with Python {version}: interpreter={python}, LIBDIR={libdir}, LDLIBRARY={ldlibrary}, shared library={}", library.display());
+    println!("cargo:rustc-link-search=native={libdir}");
+    println!(
+        "cargo:rustc-env=SCRYNEURO_PYTHON_LIBRARY={}",
+        library.display()
+    );
+    println!("cargo:rustc-env=SCRYNEURO_PYTHON_LDLIBRARY={ldlibrary}");
+    println!("cargo:rerun-if-changed={}", library.display());
 }

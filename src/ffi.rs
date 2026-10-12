@@ -98,38 +98,38 @@ fn args_handle_to_tuple<'py>(py: Python<'py>, args: isize) -> Result<Bound<'py, 
 
 /// Shared initialization logic: RTLD_GLOBAL, Python runtime, handle registry.
 /// After calling this, use `setup_sys_path` to configure `sys.path`.
-fn init_python_runtime() {
-    // RTLD_GLOBAL: make Python symbols globally visible for C extensions.
+fn init_python_runtime() -> Result<(), String> {
+    // Promote the Python library selected by PyO3, rather than guessing a version.
     #[cfg(target_os = "linux")]
-    {
-        unsafe {
-            use libc::{dlopen, RTLD_GLOBAL, RTLD_NOLOAD, RTLD_NOW};
-            let candidates: &[&[u8]] = &[
-                b"libpython3.14.so.1.0\0",
-                b"libpython3.14.so\0",
-                b"libpython3.13.so.1.0\0",
-                b"libpython3.13.so\0",
-                b"libpython3.12.so.1.0\0",
-                b"libpython3.12.so\0",
-                b"libpython3.11.so.1.0\0",
-                b"libpython3.11.so\0",
-                b"libpython3.10.so.1.0\0",
-                b"libpython3.10.so\0",
-                b"libpython3.so\0",
-            ];
-            for name in candidates {
-                let ptr = dlopen(name.as_ptr() as *const i8, RTLD_NOW | RTLD_NOLOAD);
-                if !ptr.is_null() {
-                    dlopen(name.as_ptr() as *const i8, RTLD_NOW | RTLD_GLOBAL);
-                    break;
-                }
+    unsafe {
+        use libc::{dlclose, dlopen, RTLD_GLOBAL, RTLD_NOLOAD, RTLD_NOW};
+        for name in [
+            env!("SCRYNEURO_PYTHON_LIBRARY"),
+            env!("SCRYNEURO_PYTHON_LDLIBRARY"),
+        ] {
+            let name = CString::new(name).map_err(|e| format!("Python library path: {e}"))?;
+            let library = dlopen(name.as_ptr(), RTLD_NOW | RTLD_NOLOAD | RTLD_GLOBAL);
+            if !library.is_null() {
+                // RTLD_GLOBAL promotion persists; balance this lookup's reference.
+                dlclose(library);
+                pyo3::prepare_freethreaded_python();
+                registry::init_registry();
+                return Ok(());
             }
         }
+        Err(format!(
+            "Cannot make the PyO3-selected Python library globally visible: {} (fallback {})",
+            env!("SCRYNEURO_PYTHON_LIBRARY"),
+            env!("SCRYNEURO_PYTHON_LDLIBRARY")
+        ))
     }
 
-    // Initialize Python without installing signal handlers (embedding mode).
-    pyo3::prepare_freethreaded_python();
-    registry::init_registry();
+    #[cfg(not(target_os = "linux"))]
+    {
+        pyo3::prepare_freethreaded_python();
+        registry::init_registry();
+        Ok(())
+    }
 }
 
 /// Configure `sys.path` so that Python runtime modules can be imported.
@@ -181,7 +181,10 @@ fn setup_sys_path(home: Option<&str>) -> PyResult<()> {
 #[no_mangle]
 pub extern "C" fn spy_init() -> i32 {
     clear_last_error();
-    init_python_runtime();
+    if let Err(e) = init_python_runtime() {
+        set_last_error(e);
+        return -1;
+    }
 
     match setup_sys_path(None) {
         Ok(()) => 0,
@@ -209,7 +212,10 @@ pub unsafe extern "C" fn spy_init_home(home: *const c_char) -> i32 {
         }
     };
     clear_last_error();
-    init_python_runtime();
+    if let Err(e) = init_python_runtime() {
+        set_last_error(e);
+        return -1;
+    }
 
     match setup_sys_path(Some(&home_str)) {
         Ok(()) => 0,
