@@ -191,6 +191,25 @@ load_ffi(LibPath) :-
 %% Error Checking
 %% ---------------------------------------------------------------------------
 
+% High-level cstr inputs must never enter FFI as raw integer pointers.
+require_cstr(String, Context) :-
+    must_be(list, String),
+    require_cstr_chars(String, String, Context).
+
+require_cstr_chars([], _, _) :- !.
+require_cstr_chars([Char|Rest], String, Context) :-
+    must_be(character, Char),
+    char_code(Char, Code),
+    ( Code =:= 0 ->
+        throw(error(domain_error(nul_free_string, String), Context))
+    ; require_cstr_chars(Rest, String, Context)
+    ).
+
+require_cstr_lines([], _) :- !.
+require_cstr_lines([Line|Rest], Context) :-
+    require_cstr(Line, Context),
+    require_cstr_lines(Rest, Context).
+
 % Clear stale thread-local error before an FFI call.
 clear_last_error :-
     ffi:'spy_last_error_clear'.
@@ -244,6 +263,7 @@ py_init :-
     ( initialized -> true
     ; ( catch(getenv("SCRYNEURO_HOME", Home), _, fail) ->
         %% SCRYNEURO_HOME is set — use it to find the library
+        require_cstr(Home, py_init/0),
         find_lib_in_dir(Home, LibPath),
         load_ffi(LibPath),
         ffi:'spy_init_home'(Home, Status),
@@ -261,6 +281,7 @@ py_init :-
 %% LibPath must be a double-quoted character list, not an atom.
 %% The SCRYNEURO_HOME env var (if set) is still used for sys.path.
 py_init(LibPath) :-
+    require_cstr(LibPath, py_init/1),
     ( initialized -> true
     ; load_ffi(LibPath),
       ffi:'spy_init'(Status),
@@ -273,6 +294,7 @@ py_init(LibPath) :-
 %% ScryNeuro root directory directly.
 %%   ?- py_init_home("/path/to/ScryNeuro").
 py_init_home(Home) :-
+    require_cstr(Home, py_init_home/1),
     ( initialized -> true
     ; find_lib_in_dir(Home, LibPath),
       load_ffi(LibPath),
@@ -321,6 +343,7 @@ find_lib_in_cwd(LibPath) :-
 %% py_eval(+Code, -Handle): Evaluate a Python expression.
 %%   ?- py_eval("1 + 2", H).
 py_eval(Code, Handle) :-
+    require_cstr(Code, py_eval/2),
     new_handle(Handle, py_eval/2, ffi:'spy_eval'(Code)).
 
 %% py_exec(+Code): Execute Python statements.
@@ -328,6 +351,7 @@ py_eval(Code, Handle) :-
 %% string-literal form that works directly with py_exec/1.
 %%   ?- py_exec("import numpy as np").
 py_exec(Code) :-
+    require_cstr(Code, py_exec/1),
     ffi:'spy_exec'(Code, Status),
     check_status(Status, py_exec/1).
 
@@ -337,12 +361,14 @@ py_exec(Code) :-
 %% because py_exec/1 can already execute multi-line code directly.
 %%   ?- py_exec_lines(["class Foo:", "    def bar(self):", "        return 42"]).
 py_exec_lines(Lines) :-
+    must_be(list, Lines),
+    require_cstr_lines(Lines, py_exec_lines/1),
     char_code(NL, 10),
     join_lines(Lines, NL, Code),
     py_exec(Code).
 
-join_lines([], _, []).
-join_lines([L], _, L).
+join_lines([], _, []) :- !.
+join_lines([L], _, L) :- !.
 join_lines([L|Ls], NL, Result) :-
     Ls = [_|_],
     join_lines(Ls, NL, Rest),
@@ -354,6 +380,7 @@ join_lines([L|Ls], NL, Result) :-
 %% py_import(+ModuleName, -Handle): Import a Python module.
 %%   ?- py_import("numpy", NP).
 py_import(ModuleName, Handle) :-
+    require_cstr(ModuleName, py_import/2),
     new_handle(Handle, py_import/2, ffi:'spy_import'(ModuleName)).
 
 %% ---------------------------------------------------------------------------
@@ -363,10 +390,12 @@ py_import(ModuleName, Handle) :-
 %% py_getattr(+Obj, +AttrName, -Value): Get attribute from Python object.
 %%   ?- py_import("math", M), py_getattr(M, "pi", Pi).
 py_getattr(Obj, AttrName, Value) :-
+    require_cstr(AttrName, py_getattr/3),
     new_handle(Value, py_getattr/3, ffi:'spy_getattr'(Obj, AttrName)).
 
 %% py_setattr(+Obj, +AttrName, +Value): Set attribute on Python object.
 py_setattr(Obj, AttrName, Value) :-
+    require_cstr(AttrName, py_setattr/3),
     ffi:'spy_setattr'(Obj, AttrName, Value, Status),
     check_status(Status, py_setattr/3).
 
@@ -376,21 +405,26 @@ py_setattr(Obj, AttrName, Value) :-
 
 %% py_call(+Obj, +Method, -Result): Call method with no arguments.
 py_call(Obj, Method, Result) :-
+    require_cstr(Method, py_call/3),
     new_handle(Result, py_call/3, ffi:'spy_invoke0'(Obj, Method)).
 
 %% py_call(+Obj, +Method, +Arg1, -Result): Call method with 1 argument.
 py_call(Obj, Method, Arg1, Result) :-
+    require_cstr(Method, py_call/4),
     new_handle(Result, py_call/4, ffi:'spy_invoke1'(Obj, Method, Arg1)).
 
 %% py_call(+Obj, +Method, +Arg1, +Arg2, -Result): Call method with 2 arguments.
 py_call(Obj, Method, Arg1, Arg2, Result) :-
+    require_cstr(Method, py_call/5),
     new_handle(Result, py_call/5, ffi:'spy_invoke2'(Obj, Method, Arg1, Arg2)).
 
 %% py_call(+Obj, +Method, +Arg1, +Arg2, +Arg3, -Result): Call method with 3 arguments.
 py_call(Obj, Method, Arg1, Arg2, Arg3, Result) :-
+    require_cstr(Method, py_call/6),
     new_handle(Result, py_call/6, ffi:'spy_invoke3'(Obj, Method, Arg1, Arg2, Arg3)).
 
 py_calln(Obj, Method, Args, Result) :-
+    require_cstr(Method, py_calln/4),
     require_unbound_handle(Result, py_calln/4),
     ( (Args = [_|_] ; Args = []) ->
         py_list_from_handles(Args, ArgsHandle),
@@ -489,6 +523,7 @@ py_from_bool(false, Handle) :-
 
 %% py_from_str(+String, -Handle): Create Python str.
 py_from_str(String, Handle) :-
+    require_cstr(String, py_from_str/2),
     new_handle(Handle, py_from_str/2, ffi:'spy_from_str'(String)).
 
 %% ---------------------------------------------------------------------------
@@ -523,6 +558,7 @@ py_to_json(Handle, Json) :-
 
 %% py_from_json(+JsonString, -Handle): Deserialize JSON to Python object.
 py_from_json(Json, Handle) :-
+    require_cstr(Json, py_from_json/2),
     new_handle(Handle, py_from_json/2, ffi:'spy_from_json'(Json)).
 
 %% ---------------------------------------------------------------------------
@@ -569,13 +605,15 @@ py_list_from_handles([H | Rest], List, Out) :-
 py_dict_new(Handle) :-
     new_handle(Handle, py_dict_new/1, ffi:'spy_dict_new').
 
-%% py_dict_set(+Dict, +Key, +Value): Set key-value pair (key is atom/string).
+%% py_dict_set(+Dict, +Key, +Value): Set key-value pair (key is a character list).
 py_dict_set(Dict, Key, Value) :-
+    require_cstr(Key, py_dict_set/3),
     ffi:'spy_dict_set'(Dict, Key, Value, Status),
     check_status(Status, py_dict_set/3).
 
 %% py_dict_get(+Dict, +Key, -Value): Get value by key.
 py_dict_get(Dict, Key, Value) :-
+    require_cstr(Key, py_dict_get/3),
     new_handle(Value, py_dict_get/3, ffi:'spy_dict_get'(Dict, Key)).
 
 %% ---------------------------------------------------------------------------
