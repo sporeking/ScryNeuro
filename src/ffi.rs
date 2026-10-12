@@ -143,8 +143,11 @@ fn setup_sys_path(home: Option<&str>) -> PyResult<()> {
         let path = sys.getattr("path")?;
 
         // Always add cwd-relative paths for backward compatibility.
-        path.call_method1("insert", (0i32, "."))?;
-        path.call_method1("insert", (0i32, "./python"))?;
+        for entry in [".", "./python"] {
+            if !path.contains(entry)? {
+                path.call_method1("insert", (0i32, entry))?;
+            }
+        }
 
         // Determine ScryNeuro home directory.
         let resolved_home: Option<String> = match home {
@@ -155,8 +158,11 @@ fn setup_sys_path(home: Option<&str>) -> PyResult<()> {
         // Prepend home-based paths (higher priority than cwd).
         if let Some(ref h) = resolved_home {
             let python_dir = format!("{}/python", h);
-            path.call_method1("insert", (0i32, python_dir.as_str()))?;
-            path.call_method1("insert", (0i32, h.as_str()))?;
+            for entry in [python_dir.as_str(), h.as_str()] {
+                if !path.contains(entry)? {
+                    path.call_method1("insert", (0i32, entry))?;
+                }
+            }
         }
 
         Ok(())
@@ -878,6 +884,7 @@ pub extern "C" fn spy_drop(handle: isize) {
 /// Return the number of live handles (for debugging/diagnostics).
 #[no_mangle]
 pub extern "C" fn spy_handle_count() -> i64 {
+    clear_last_error();
     match registry::len() {
         Ok(n) => n as i64,
         Err(e) => {

@@ -32,17 +32,21 @@ impl HandleRegistry {
 
 // ==================== Public API ====================
 
-/// Initialize the registry. Called once from `spy_init()`.
+/// Initialize the registry without discarding existing handles.
 pub fn init_registry() {
     let mut guard = REGISTRY.lock().expect("Registry mutex poisoned");
-    *guard = Some(HandleRegistry::new());
+    guard.get_or_insert_with(HandleRegistry::new);
 }
 
-/// Destroy the registry, dropping all Python objects.
+/// Destroy the registry, dropping all Python objects outside the lock.
 /// Must be called with the GIL held so Py<PyAny> destructors can run.
 pub fn destroy_registry() {
-    let mut guard = REGISTRY.lock().expect("Registry mutex poisoned");
-    *guard = None;
+    let old = {
+        let mut guard = REGISTRY.lock().expect("Registry mutex poisoned");
+        guard.take()
+    };
+    // Python __del__ and weakref callbacks can reenter the registry here.
+    drop(old);
 }
 
 /// Insert a Python object and return its handle.
