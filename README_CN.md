@@ -30,7 +30,7 @@ ScryNeuro 是一个连接 **Scryer Prolog** 与 **Python** 的高性能桥接框
 
 > 关于 Python 3.14+：当前 `pyo3 = 0.23.x` 默认可能拒绝 Python 3.14。项目构建脚本已在检测到 Python >= 3.14 时自动启用 `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1`。
 
-该兼容变量只在脚本的构建阶段使用，构建完成后会自动清理，不会污染后续正常运行命令。
+脚本保留调用者的 `errexit`、`nounset`、`pipefail` 选项和原有 PyO3 变量，包括变量是否导出。只有调用者未设置兼容标志时，脚本才在构建子进程中自动启用它。构建失败返回非零状态，所需运行时路径仅在构建成功后导出。
 
 ### 第一步：安装 Rust
 
@@ -58,7 +58,7 @@ scryer-prolog --version
 
 ### 第三步：配置 Python 环境
 
-ScryNeuro 在**编译时**链接当前活跃的 `python3`，在**运行时**加载 `libpython3.x.so`。两者必须匹配。
+ScryNeuro 在**编译时**链接 PyO3 选定的 Python，在**运行时**必须加载与之匹配的共享库。构建脚本优先使用 `PYO3_PYTHON`，否则使用 `python3`，并将同一个解释器传给 Cargo。直接运行 Cargo 时使用 PyO3 自身的发现规则（可能优先选择 `python`）；`build.rs` 读取这份实际配置，不再独立选择解释器。日志显示解释器、版本、`LIBDIR` 和 `LDLIBRARY`；解释器或共享库不存在、配置不一致时明确失败。使用特定环境时，应先导出 `PYO3_PYTHON`，再构建并查询运行时路径。
 
 #### 方案 A：Conda（推荐）
 
@@ -73,9 +73,9 @@ conda install pytorch torchvision torchaudio pytorch-cuda=12.4 -c pytorch -c nvi
 conda install pytorch torchvision torchaudio cpuonly -c pytorch  # CPU 版
 
 # 验证共享库是否存在
-python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))"
+"${PYO3_PYTHON:-python3}" -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))"
 # 应输出类似：/home/user/miniconda3/envs/scryneuro/lib
-ls $(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")/libpython3*.so*
+ls "$("${PYO3_PYTHON:-python3}" -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")"/libpython3*.so*
 ```
 
 #### 方案 B：uv
@@ -92,7 +92,7 @@ source .venv/bin/activate
 uv pip install numpy torch
 
 # 验证
-python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))"
+"${PYO3_PYTHON:-python3}" -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))"
 ```
 
 #### 方案 C：系统 Python
@@ -133,7 +133,7 @@ source build_macos.sh
 如果你在某些环境中仍直接运行 `cargo build --release` 且 Python 为 3.14+，请手动加上：
 
 ```bash
-PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo build --release
+PYO3_PYTHON="${PYO3_PYTHON:-python3}" PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo build --release
 ```
 
 > **为什么要用 `source`？** 使用 `source`（或 `. ./build_linux.sh`）执行脚本，导出的环境变量才会保留在**当前 Shell** 中。直接执行 `./build_linux.sh` 只会在一个立即退出的子 Shell 中设置它们，对当前终端没有效果。
@@ -141,12 +141,12 @@ PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo build --release
 也可以手动执行以下步骤：
 
 ```bash
-cargo build --release
+PYO3_PYTHON="${PYO3_PYTHON:-python3}" cargo build --release
 cp target/release/libscryneuro.so ./     # Linux
 # cp target/release/libscryneuro.dylib ./  # macOS
 ```
 
-编译输出中应显示 `Building with Python 3.12.x`（与当前激活的环境一致）。
+编译输出显示 `Building with Python ...`、实际解释器和共享库路径。在 macOS 上，已声明的 Python framework 若无法从 `LIBDIR` 找到 `LDLIBRARY`，则从 `PYTHONFRAMEWORKPREFIX` 解析。路径含空格时，先执行 `export PYO3_PYTHON="/path with spaces/bin/python"`，再 source 构建脚本。
 
 ### 第五步：验证
 
@@ -159,12 +159,12 @@ ScryNeuro 在运行时需要**两个共享库**：
 
 ```bash
 # Linux — 通用命令，适用于所有发行版和环境：
-PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
-LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/basic.pl
+PYLIB=$("${PYO3_PYTHON:-python3}" -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+LD_LIBRARY_PATH=".:$PYLIB:${LD_LIBRARY_PATH:-}" scryer-prolog examples/basic.pl
 
 # macOS：
-PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
-DYLD_LIBRARY_PATH=".:$PYLIB:$DYLD_LIBRARY_PATH" scryer-prolog examples/basic.pl
+PYLIB=$("${PYO3_PYTHON:-python3}" -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+DYLD_LIBRARY_PATH=".:$PYLIB:${DYLD_LIBRARY_PATH:-}" scryer-prolog examples/basic.pl
 ```
 
 > **简写方式**：在某些系统上（如安装了 `python` 系统包的 Arch Linux），`libpython3.x.so` 已在 `/usr/lib/`（默认链接器搜索路径）中，因此 `LD_LIBRARY_PATH=.` 就够了。但上面的通用命令在**所有环境**下都能正常工作——包括 Debian/Ubuntu、Fedora、以及 conda/venv 环境（这些环境中 `libpython` 在非默认路径）。详见[理解 `LD_LIBRARY_PATH`](#理解-ld_library_path)。
@@ -205,9 +205,9 @@ sum(0..99) = 4950
 export SCRYNEURO_HOME=/path/to/ScryNeuro
 
 # 确保 libscryneuro.so 和 libpython3.x.so 都可被动态链接器找到
-PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
-export LD_LIBRARY_PATH="$SCRYNEURO_HOME:$PYLIB:$LD_LIBRARY_PATH"          # Linux
-# export DYLD_LIBRARY_PATH="$SCRYNEURO_HOME:$PYLIB:$DYLD_LIBRARY_PATH"    # macOS
+PYLIB=$("${PYO3_PYTHON:-python3}" -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+export LD_LIBRARY_PATH="$SCRYNEURO_HOME:$PYLIB:${LD_LIBRARY_PATH:-}"          # Linux
+# export DYLD_LIBRARY_PATH="$SCRYNEURO_HOME:$PYLIB:${DYLD_LIBRARY_PATH:-}"    # macOS
 ```
 
 **第二步：在你的项目中使用**
@@ -282,8 +282,8 @@ conda activate scryneuro
 
 # 设置所有必要的环境变量
 export SCRYNEURO_HOME=$SCRYNEURO
-PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
-export LD_LIBRARY_PATH="$SCRYNEURO:$PYLIB:$LD_LIBRARY_PATH"
+PYLIB=$("${PYO3_PYTHON:-python3}" -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+export LD_LIBRARY_PATH="$SCRYNEURO:$PYLIB:${LD_LIBRARY_PATH:-}"
 
 scryer-prolog "$@"
 ```
@@ -357,8 +357,8 @@ Conda 提供的是 Python *包*，但 `libpython.so` 本身可能来自 conda �
 
 **一行通用命令（始终有效）：**
 ```bash
-PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
-LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/basic.pl
+PYLIB=$("${PYO3_PYTHON:-python3}" -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+LD_LIBRARY_PATH=".:$PYLIB:${LD_LIBRARY_PATH:-}" scryer-prolog examples/basic.pl
 ```
 
 **如果你确定你的系统只需要 `.`：**
@@ -368,11 +368,11 @@ LD_LIBRARY_PATH=. scryer-prolog examples/basic.pl
 
 #### RTLD_GLOBAL（C 扩展支持）
 
-`spy_init()` 中的 `RTLD_GLOBAL` 机制会自动将 `libpython3.x.so` 以全局符号可见模式重新打开。这是 NumPy、PyTorch 等 C 扩展库正确解析符号所必需的。你不需要做任何特殊操作——只需确保 `libpython` 可通过 `LD_LIBRARY_PATH` 被找到即可（如上所述）。
+`spy_init()` 的 `RTLD_GLOBAL` 机制将已加载、编译时选定的 Python 库提升为全局符号可见：先使用配置的绝对库路径，再以配置的 `LDLIBRARY` 文件名作为后备。两者都无法提升时返回初始化错误。这是 NumPy、PyTorch 等 C 扩展库正确解析符号所必需的。你不需要做任何特殊操作——只需确保 `libpython` 可通过 `LD_LIBRARY_PATH` 被找到即可（如上所述）。
 
 如果 `RTLD_GLOBAL` 自动检测失败（极少见），可使用 `LD_PRELOAD` 作为后备方案：
 ```bash
-export LD_PRELOAD=$(python3 -c "import sysconfig, os; print(os.path.join(sysconfig.get_config_var('LIBDIR'), 'libpython3.12.so'))")
+export LD_PRELOAD=$("${PYO3_PYTHON:-python3}" -c "import sysconfig, os; print(os.path.join(sysconfig.get_config_var('LIBDIR'), sysconfig.get_config_var('LDLIBRARY')))")
 ```
 
 #### 持久化 Shell 配置 {#持久化-shell-配置}
@@ -387,10 +387,10 @@ export SCRYNEURO_HOME="$HOME/path/to/ScryNeuro"
 
 # 确保动态链接器能找到 libscryneuro.so 和 libpython3.x.so。
 # 此命令会查询当前活动的 Python 环境来获取 libpython 的路径。
-export LD_LIBRARY_PATH="$SCRYNEURO_HOME:$(python3 -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))'):$LD_LIBRARY_PATH"
+export LD_LIBRARY_PATH="$SCRYNEURO_HOME:$("${PYO3_PYTHON:-python3}" -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))'):${LD_LIBRARY_PATH:-}"
 ```
 
-> **注意**：如果你使用 conda，上面代码片段中的 `python3` 指的是 shell 启动时活动的那个 Python。如果你之后切换到不同的 conda 环境，`$LD_LIBRARY_PATH` 仍然指向原来环境的 `libpython`。通常这没问题，因为相同 Python 版本的 `libpython3.12.so` 在各 conda 环境间是 ABI 兼容的。如果你切换了 Python *版本*，则需要重新编译 ScryNeuro（`cargo clean && cargo build --release`）。
+> **注意**：这些路径对应执行代码片段时选定的解释器。切换环境不会更新既有 `LD_LIBRARY_PATH`，也不会更新显式设置的 `PYO3_PYTHON`。应同时选定新解释器、重新构建并生成匹配的运行时路径；版本号相同不能证明实际加载的是预期环境。
 
 > **替代方案**：如果你更喜欢按需设置（不做持久化配置），可以使用[跨项目使用](#跨项目使用cross-project-usage)中的 `run.sh` 启动脚本，或下方的便捷启动脚本。
 
@@ -401,8 +401,8 @@ export LD_LIBRARY_PATH="$SCRYNEURO_HOME:$(python3 -c 'import sysconfig; print(sy
 # 激活 conda 环境并运行 Prolog 脚本
 eval "$(conda shell.bash hook)"
 conda activate scryneuro
-PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
-LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog "$@"
+PYLIB=$("${PYO3_PYTHON:-python3}" -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+LD_LIBRARY_PATH=".:$PYLIB:${LD_LIBRARY_PATH:-}" scryer-prolog "$@"
 ```
 ```bash
 chmod +x run.sh
@@ -415,12 +415,12 @@ chmod +x run.sh
 
 ```bash
 # 编译
-cargo build --release
+PYO3_PYTHON="${PYO3_PYTHON:-python3}" cargo build --release
 cp target/release/libscryneuro.dylib ./
 
 # 运行（通用方式 — 适用于 conda、uv、Homebrew、系统 Python）：
-PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
-DYLD_LIBRARY_PATH=".:$PYLIB:$DYLD_LIBRARY_PATH" scryer-prolog examples/basic.pl
+PYLIB=$("${PYO3_PYTHON:-python3}" -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+DYLD_LIBRARY_PATH=".:$PYLIB:${DYLD_LIBRARY_PATH:-}" scryer-prolog examples/basic.pl
 
 # 运行（简写 — 如果 libpython 已在默认搜索路径中）：
 DYLD_LIBRARY_PATH=. scryer-prolog examples/basic.pl
@@ -438,14 +438,16 @@ macOS **不需要** `RTLD_GLOBAL` 的变通措施——Python C 扩展在 Darwin
 ```bash
 conda activate other_env
 cargo clean          # 清除链接到旧 Python 的构建产物
-cargo build --release
+PYO3_PYTHON="${PYO3_PYTHON:-python3}" cargo build --release
 cp target/release/libscryneuro.so ./  # 或 macOS 上的 .dylib
 ```
 
-构建系统通过 `PATH` 中的 `python3` 检测 Python。可用以下方式覆盖：
+显式选择解释器，让构建和后续运行时路径查询使用同一环境：
 ```bash
-PYO3_PYTHON=/path/to/specific/python3 cargo build --release
+export PYO3_PYTHON="/path/to/specific/python3"
+source build_linux.sh  # 或 source build_macos.sh
 ```
+改变解释器配置会使 Cargo 构建配置失效。重新构建后使用匹配的运行时库路径；脚本保留原有 `PYO3_PYTHON` 设置。
 
 ---
 
@@ -466,12 +468,12 @@ main :-
 
 ```bash
 # Linux（通用命令）：
-PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
-LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog my_program.pl
+PYLIB=$("${PYO3_PYTHON:-python3}" -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+LD_LIBRARY_PATH=".:$PYLIB:${LD_LIBRARY_PATH:-}" scryer-prolog my_program.pl
 
 # macOS：
-PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
-DYLD_LIBRARY_PATH=".:$PYLIB:$DYLD_LIBRARY_PATH" scryer-prolog my_program.pl
+PYLIB=$("${PYO3_PYTHON:-python3}" -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+DYLD_LIBRARY_PATH=".:$PYLIB:${DYLD_LIBRARY_PATH:-}" scryer-prolog my_program.pl
 
 # 或使用 run.sh（见“平台差异说明 > Linux > 便捷启动脚本”）：
 # ./run.sh my_program.pl
@@ -497,6 +499,7 @@ Python 对象被统一存放在 Rust 侧的一个“哈希表（HashMap）”注
 - 调用 `py_free/1` 会从注册表中移除该条目，并减少引用计数。
 - 一旦被释放，句柄就失效了。如果继续使用一个已被释放的句柄，将会导致错误。
 - 同一进程中句柄编号不会复用，包括执行 `py_finalize/0` 后再次执行 `py_init/0`；旧会话的句柄始终无效。
+- 重复初始化（包括直接调用 `spy_init()`）保留已有句柄，并避免重复添加 `sys.path` 条目。finalize 在持锁时取出注册表，解锁后释放对象，因此 `__del__` 和 weakref 回调可以重新查询注册表。普通 Python 方法同样在注册表锁外执行。
 
 ### 错误处理与哨兵模式
 FFI（C 语言接口）层使用了三种主要的设计模式来发出错误信号：
@@ -505,6 +508,8 @@ FFI（C 语言接口）层使用了三种主要的设计模式来发出错误信
 - **字符串类函数**：发生错误时返回空字符串 `""`。
 
 在 Prolog 层，我们用 `check_handle/2` 和 `check_status/2` 等谓词对这些底层调用进行了封装。当错误发生时，这些谓词会通过 `py_last_error/1` 获取具体的错误信息，并在 Prolog 中抛出一个异常：`error(python_error(Msg), Context)`。
+
+普通值输出可以预绑定：`py_to_int(H, 3)` 在值匹配时成功，成功转换但值不匹配时正常失败。桥接层先检查 Python/FFI 错误，再统一输出，因此非法句柄或转换错误即使遇到预绑定输出也会抛出异常。布尔匹配和 `py_is_none/1` 保留逻辑成功/失败语义；新句柄输出仍要求未绑定变量。
 
 你可以使用 Prolog 的 `catch/3` 来优雅地捕获并处理这些异常：
 ```prolog
@@ -529,6 +534,8 @@ catch(
 
 ### Scryer Prolog 中的字符串
 在 Scryer Prolog 中，用双引号包裹的字符串（比如 `"hello"`）实际上是由字符组成的**列表**（char lists）。而像 `hello` 这样没有引号的则是**原子（Atoms）**，它们是符号常量，并不是字符串。这一区别在后续的 `:=` 运算符分发机制中非常关键。对于多行 Python 代码，可以像 `examples/basic.pl` 里的 `example_multiline/0` 那样，直接把 `py_exec/1` 的参数写成 ISO Prolog 的反斜杠续行字符串。`py_exec_lines/1` 仍然保留为便捷封装，但它本质上只是把多行拼接后再调用 `py_exec/1`，因此在功能上是冗余的。
+
+所有高层 C 字符串输入（代码、模块/属性/方法名、字典键、字符串/JSON 值、库路径和 home 路径）必须是完全实例化、无 NUL 的合法字符列表。整数、原子、畸形列表或非字符元素触发类型异常；变量和开放列表触发实例化异常。NUL 在进入 FFI 前触发 `error(domain_error(nul_free_string, Input), Context)`。空字符串和 Unicode 仍是合法输入（具体 Python 含义取决于操作）。`py_exec_lines/1` 在执行任何代码前验证整个列表。底层 C ABI 仍是 unsafe 接口，调用者必须提供有效指针。
 
 ### TLS 字符串缓冲区
 在 Rust 层，像 `py_to_str` 或 `py_to_json` 这类返回字符串的 FFI 函数，会把结果先写入一个“线程局部存储”（TLS）缓冲区中。Prolog 层会立即将该缓冲区的内容复制为 Prolog 的字符列表。这种底层的内存处理对用户是完全透明的。
@@ -707,7 +714,7 @@ class Point:\n\
 #### `py_calln(+Obj, +Method, +Args, -Result)`
 调用支持 N 个参数的方法。`Args` 可以是 Prolog 句柄列表 `[H1, H2, ...]`，也可以是现有 Python 列表的句柄。
 
-> **避坑指南**：方法名必须是字符串。`py_call(Obj, "upper", R)` 是正确的，但 `py_call(Obj, upper, R)` 会失败，因为 `upper` 是原子。
+> **避坑指南**：方法名必须是字符列表。`py_call(Obj, "upper", R)` 是正确的，但 `py_call(Obj, upper, R)` 会抛出类型异常，因为 `upper` 是原子。
 
 ### 直接调用 (Callable Objects)
 直接调用函数、Lambda 表达式或类构造器。
@@ -945,13 +952,13 @@ scoped_demo :-
 
 ```bash
 # 运行所有示例（通用命令，适用于所有系统）
-PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
-LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/basic.pl
-LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/neural.pl
-LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/numpy_torch.pl
-LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/mnist_cnn.pl
-LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/mnist_cnn_v2.pl
-LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/rl_demo.pl
+PYLIB=$("${PYO3_PYTHON:-python3}" -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+LD_LIBRARY_PATH=".:$PYLIB:${LD_LIBRARY_PATH:-}" scryer-prolog examples/basic.pl
+LD_LIBRARY_PATH=".:$PYLIB:${LD_LIBRARY_PATH:-}" scryer-prolog examples/neural.pl
+LD_LIBRARY_PATH=".:$PYLIB:${LD_LIBRARY_PATH:-}" scryer-prolog examples/numpy_torch.pl
+LD_LIBRARY_PATH=".:$PYLIB:${LD_LIBRARY_PATH:-}" scryer-prolog examples/mnist_cnn.pl
+LD_LIBRARY_PATH=".:$PYLIB:${LD_LIBRARY_PATH:-}" scryer-prolog examples/mnist_cnn_v2.pl
+LD_LIBRARY_PATH=".:$PYLIB:${LD_LIBRARY_PATH:-}" scryer-prolog examples/rl_demo.pl
 
 # 或使用 run.sh（见“平台差异说明 > Linux > 便捷启动脚本”）
 # ./run.sh examples/basic.pl
@@ -959,9 +966,36 @@ LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/rl_demo.pl
 
 ---
 
+## Core 回归测试
+
+在项目根目录选择解释器，再使用对应平台脚本构建。当前 PyO3 版本在 Python 3.14+ 下直接执行 Cargo 命令时还需要兼容标志：
+
+```bash
+export PYO3_PYTHON="/path/to/python"
+source build_linux.sh  # macOS: source build_macos.sh
+cargo fmt --check
+PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo test
+PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo clippy
+PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo build --release
+
+(
+for suite in test/test_minimal_api.pl test/test_prolog_api.pl \
+    test/test_comprehensive.pl test/test_value_errors.pl \
+    test/test_string_inputs.pl test/test_smoke.pl test/test_pi.pl; do
+    scryer-prolog "$suite" || exit "$?"
+done
+)
+"$PYO3_PYTHON" test/test_registry_lifecycle.py -v
+"$PYO3_PYTHON" -m unittest discover -s test -p test_build_scripts.py -v
+```
+
+对于 PyO3 正式支持的 Python 版本，可省略兼容标志前缀。各测试套件包含结果断言，失败时返回非零退出码；应检查结果后再继续。生命周期测试对每个场景使用独立子进程和八秒超时，包括析构及 weakref 回调重入。构建测试在隔离 shell 中模拟 Cargo 来检查两个平台脚本，并使用缓存依赖执行离线 Cargo 配置测试。模拟 macOS 和 Python 版本测试不等于原生平台或真实多解释器验证。生命周期测试所用解释器必须与桥接库的 Python 运行时匹配。
+
+---
+
 ## 性能测量
 
-先用当前 `python3` 对应的 Python 环境构建 release 库，再运行：
+先用选定的 Python 环境构建 release 库，再运行：
 
 ```bash
 SCRYNEURO_HOME="$(pwd)/target/release" bash benchmark/run_benchmarks.sh 10000
@@ -985,8 +1019,8 @@ Scryer Prolog 未包含 FFI 支持。请从最新 `main` 分支重新编译。
 ### 链接错误：`cannot find -lpython3.12`
 Python 共享库未找到。检查：
 ```bash
-python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))"
-ls $(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")/libpython3*
+"${PYO3_PYTHON:-python3}" -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))"
+ls "$("${PYO3_PYTHON:-python3}" -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")"/libpython3*
 ```
 如果为空，说明 Python 未以 `--enable-shared` 编译。使用 conda 或重新编译 Python。
 

@@ -32,7 +32,7 @@ Inspired by [Jurassic.pl](https://github.com/haldai/Jurassic.pl) (SWI-Prolog ↔
 
 > Note on Python 3.14+: current `pyo3 = 0.23.x` may reject Python 3.14 by default. Our build scripts now auto-enable `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` when Python >= 3.14 is detected.
 
-The compatibility flag is only used for the build process in the script and is unset afterward, so it does not leak into normal runtime commands.
+The scripts preserve caller shell options (`errexit`, `nounset`, `pipefail`) and existing PyO3 variables, including whether they are exported. Automatic compatibility mode applies only to the build subprocess when the caller has not set the flag. Build failures return a nonzero status; runtime paths are exported only after a successful build.
 
 ### Step 1: Install Rust
 
@@ -60,7 +60,7 @@ scryer-prolog --version
 
 ### Step 3: Set Up Python Environment
 
-ScryNeuro links against whatever `python3` is active at **build time**, and loads `libpython3.x.so` at **runtime**. Both must match.
+ScryNeuro links against the Python selected by PyO3 at **build time** and must load the matching shared library at **runtime**. The build scripts use `PYO3_PYTHON` when set, otherwise `python3`, and pin that same interpreter for Cargo. Direct Cargo builds use PyO3 discovery (which may prefer `python`); `build.rs` reads that exact configuration instead of independently choosing an interpreter. The log reports the interpreter, version, `LIBDIR`, and `LDLIBRARY`; a missing interpreter/shared library or inconsistent configuration fails the build. Export `PYO3_PYTHON` before building and querying runtime paths when using a specific environment.
 
 #### Option A: Conda (Recommended)
 
@@ -75,9 +75,9 @@ conda install pytorch torchvision torchaudio pytorch-cuda=12.4 -c pytorch -c nvi
 conda install pytorch torchvision torchaudio cpuonly -c pytorch  # CPU only
 
 # Verify shared library exists
-python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))"
+"${PYO3_PYTHON:-python3}" -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))"
 # Should print something like: /home/user/miniconda3/envs/scryneuro/lib
-ls $(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")/libpython3*.so*
+ls "$("${PYO3_PYTHON:-python3}" -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")"/libpython3*.so*
 ```
 
 #### Option B: uv
@@ -94,7 +94,7 @@ source .venv/bin/activate
 uv pip install numpy torch
 
 # Verify
-python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))"
+"${PYO3_PYTHON:-python3}" -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))"
 ```
 
 #### Option C: System Python
@@ -135,7 +135,7 @@ source build_macos.sh
 If your shell/environment still invokes `cargo build --release` directly with Python 3.14+, set:
 
 ```bash
-PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo build --release
+PYO3_PYTHON="${PYO3_PYTHON:-python3}" PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo build --release
 ```
 
 > **Why `source`?** Running with `source` (or `. ./build_linux.sh`) makes the exported variables persist in your **current shell**. Running as `./build_linux.sh` sets them only in a subshell that immediately exits.
@@ -143,12 +143,12 @@ PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo build --release
 Alternatively, build manually:
 
 ```bash
-cargo build --release
+PYO3_PYTHON="${PYO3_PYTHON:-python3}" cargo build --release
 cp target/release/libscryneuro.so ./     # Linux
 # cp target/release/libscryneuro.dylib ./  # macOS
 ```
 
-The build output should show `Building with Python 3.12.x` (matching your active environment).
+The build output shows `Building with Python ...` and the actual interpreter and shared library paths. On macOS, a declared Python framework can resolve `LDLIBRARY` relative to `PYTHONFRAMEWORKPREFIX` when it is absent from `LIBDIR`. For a path containing spaces, use `export PYO3_PYTHON="/path with spaces/bin/python"` before sourcing the script.
 
 ### Step 5: Verify
 
@@ -161,12 +161,12 @@ The `LD_LIBRARY_PATH` (Linux) or `DYLD_LIBRARY_PATH` (macOS) tells the OS dynami
 
 ```bash
 # Linux — robust command that works on all distros and environments:
-PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
-LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/basic.pl
+PYLIB=$("${PYO3_PYTHON:-python3}" -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+LD_LIBRARY_PATH=".:$PYLIB:${LD_LIBRARY_PATH:-}" scryer-prolog examples/basic.pl
 
 # macOS:
-PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
-DYLD_LIBRARY_PATH=".:$PYLIB:$DYLD_LIBRARY_PATH" scryer-prolog examples/basic.pl
+PYLIB=$("${PYO3_PYTHON:-python3}" -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+DYLD_LIBRARY_PATH=".:$PYLIB:${DYLD_LIBRARY_PATH:-}" scryer-prolog examples/basic.pl
 ```
 
 > **Shortcut**: On some systems (e.g., Arch Linux with the `python` system package), `libpython3.x.so` is already in `/usr/lib/` (a default linker search path), so `LD_LIBRARY_PATH=.` alone suffices. However, the robust command above works **everywhere** — including Debian/Ubuntu, Fedora, and conda/venv environments where `libpython` lives in a non-default path. See [Understanding `LD_LIBRARY_PATH`](#understanding-ld_library_path-linux) for details.
@@ -192,9 +192,9 @@ Set `SCRYNEURO_HOME` to point to your ScryNeuro installation. `py_init/0` will a
 export SCRYNEURO_HOME=/path/to/ScryNeuro
 
 # Ensure both libscryneuro.so and libpython3.x.so are discoverable
-PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
-export LD_LIBRARY_PATH="$SCRYNEURO_HOME:$PYLIB:$LD_LIBRARY_PATH"  # Linux
-# export DYLD_LIBRARY_PATH="$SCRYNEURO_HOME:$PYLIB:$DYLD_LIBRARY_PATH"  # macOS
+PYLIB=$("${PYO3_PYTHON:-python3}" -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+export LD_LIBRARY_PATH="$SCRYNEURO_HOME:$PYLIB:${LD_LIBRARY_PATH:-}"  # Linux
+# export DYLD_LIBRARY_PATH="$SCRYNEURO_HOME:$PYLIB:${DYLD_LIBRARY_PATH:-}"  # macOS
 
 # Run your project from anywhere
 scryer-prolog /path/to/your_project/main.pl
@@ -243,8 +243,8 @@ eval "$(conda shell.bash hook)"
 conda activate scryneuro
 
 export SCRYNEURO_HOME=$SCRYNEURO
-PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
-export LD_LIBRARY_PATH="$SCRYNEURO:$PYLIB:$LD_LIBRARY_PATH"
+PYLIB=$("${PYO3_PYTHON:-python3}" -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+export LD_LIBRARY_PATH="$SCRYNEURO:$PYLIB:${LD_LIBRARY_PATH:-}"
 
 scryer-prolog "$@"
 ```
@@ -295,8 +295,8 @@ Conda provides Python *packages*, but `libpython.so` itself may come from either
 
 **One-liner (always works):**
 ```bash
-PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
-LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/basic.pl
+PYLIB=$("${PYO3_PYTHON:-python3}" -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+LD_LIBRARY_PATH=".:$PYLIB:${LD_LIBRARY_PATH:-}" scryer-prolog examples/basic.pl
 ```
 
 **If you know `.` alone is enough for your system:**
@@ -306,11 +306,11 @@ LD_LIBRARY_PATH=. scryer-prolog examples/basic.pl
 
 #### RTLD_GLOBAL (C Extensions)
 
-The `RTLD_GLOBAL` mechanism in `spy_init()` automatically re-opens `libpython3.x.so` with global symbol visibility. This is required for C extensions like NumPy and PyTorch to resolve symbols correctly. You don’t need to do anything special — just ensure `libpython` is discoverable via `LD_LIBRARY_PATH` as described above.
+The `RTLD_GLOBAL` mechanism in `spy_init()` promotes the already loaded Python library selected at build time to global symbol visibility, using its configured absolute path and then its configured `LDLIBRARY` name as a fallback. It reports an initialization error if neither can be promoted. This is required for C extensions like NumPy and PyTorch to resolve symbols correctly. You don’t need to do anything special — just ensure `libpython` is discoverable via `LD_LIBRARY_PATH` as described above.
 
 If `RTLD_GLOBAL` auto-detection fails (rare), fall back to `LD_PRELOAD`:
 ```bash
-export LD_PRELOAD=$(python3 -c "import sysconfig, os; print(os.path.join(sysconfig.get_config_var('LIBDIR'), 'libpython3.12.so'))")
+export LD_PRELOAD=$("${PYO3_PYTHON:-python3}" -c "import sysconfig, os; print(os.path.join(sysconfig.get_config_var('LIBDIR'), sysconfig.get_config_var('LDLIBRARY')))")
 ```
 
 #### Persistent Shell Configuration
@@ -325,10 +325,10 @@ export SCRYNEURO_HOME="$HOME/path/to/ScryNeuro"
 
 # Ensure the dynamic linker can find libscryneuro.so and libpython3.x.so.
 # This queries the active Python environment for libpython's location.
-export LD_LIBRARY_PATH="$SCRYNEURO_HOME:$(python3 -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))'):$LD_LIBRARY_PATH"
+export LD_LIBRARY_PATH="$SCRYNEURO_HOME:$("${PYO3_PYTHON:-python3}" -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))'):${LD_LIBRARY_PATH:-}"
 ```
 
-> **Note**: If you use conda, the `python3` in the snippet above refers to whichever Python is active when the shell starts. If you activate a different conda environment later, `$LD_LIBRARY_PATH` will still point to the original environment’s `libpython`. This is usually fine because `libpython3.12.so` is ABI-compatible across conda envs of the same Python version. If you switch Python *versions*, rebuild ScryNeuro (`cargo clean && cargo build --release`).
+> **Note**: These paths refer to the interpreter selected when the snippet runs. Activating another environment does not update an existing `LD_LIBRARY_PATH` or an explicit `PYO3_PYTHON`. Select the new interpreter, rebuild, and regenerate the runtime paths together; matching version numbers alone do not establish that the intended environment is loaded.
 
 > **Alternative**: If you prefer a per-invocation approach (no persistent config), use the `run.sh` wrapper described in [Cross-Project Usage](#cross-project-usage) or in the convenience wrapper below.
 
@@ -339,8 +339,8 @@ export LD_LIBRARY_PATH="$SCRYNEURO_HOME:$(python3 -c 'import sysconfig; print(sy
 # Activate conda env and run a Prolog script with ScryNeuro
 eval "$(conda shell.bash hook)"
 conda activate scryneuro
-PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
-LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog "$@"
+PYLIB=$("${PYO3_PYTHON:-python3}" -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+LD_LIBRARY_PATH=".:$PYLIB:${LD_LIBRARY_PATH:-}" scryer-prolog "$@"
 ```
 
 ### macOS
@@ -349,12 +349,12 @@ On macOS, the shared library extension is `.dylib`, and the environment variable
 
 ```bash
 # Build
-cargo build --release
+PYO3_PYTHON="${PYO3_PYTHON:-python3}" cargo build --release
 cp target/release/libscryneuro.dylib ./
 
 # Run (robust — works with conda, uv, Homebrew, system Python):
-PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
-DYLD_LIBRARY_PATH=".:$PYLIB:$DYLD_LIBRARY_PATH" scryer-prolog examples/basic.pl
+PYLIB=$("${PYO3_PYTHON:-python3}" -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+DYLD_LIBRARY_PATH=".:$PYLIB:${DYLD_LIBRARY_PATH:-}" scryer-prolog examples/basic.pl
 
 # Run (shortcut — if libpython is already in a default search path):
 DYLD_LIBRARY_PATH=. scryer-prolog examples/basic.pl
@@ -373,14 +373,16 @@ If you switch conda environments (or Python versions), **you must rebuild**:
 ```bash
 conda activate other_env
 cargo clean          # Remove old build artifacts linked to previous Python
-cargo build --release
+PYO3_PYTHON="${PYO3_PYTHON:-python3}" cargo build --release
 cp target/release/libscryneuro.so ./  # or .dylib on macOS
 ```
 
-The build system detects Python via `python3` in your `PATH`. You can override this with:
+Select the interpreter explicitly for both building and subsequent runtime path queries:
 ```bash
-PYO3_PYTHON=/path/to/specific/python3 cargo build --release
+export PYO3_PYTHON="/path/to/specific/python3"
+source build_linux.sh  # or source build_macos.sh
 ```
+Changing interpreter configuration invalidates the Cargo build configuration. Rebuild and use the matching runtime library paths; the scripts preserve your original `PYO3_PYTHON` setting.
 
 ---
 
@@ -406,11 +408,11 @@ main :-
     % Release the Python object handle to prevent memory leaks.
     py_free(X),
     
-    % Shut down the Python interpreter.
+    % Release bridge handles; Python modules and globals may remain.
     py_finalize.
 ```
 
-This example demonstrates the fundamental workflow: initialize the bridge, evaluate Python code to get a handle, convert the result to a Prolog-native value, print it, free the handle, and shut down. Every ScryNeuro program follows this pattern.
+This example demonstrates the fundamental workflow: initialize the bridge, evaluate Python code to get a handle, convert the result to a Prolog-native value, print it, free the handle, and finalize bridge resources. Every ScryNeuro program follows this pattern.
 
 If you prefer scoped cleanup, the same workflow can be expressed with `with_py_temp/3`, which acquires the temporary handle and frees it automatically when the goal exits:
 
@@ -449,6 +451,7 @@ The registry, managed by `src/registry.rs`, is a thread-safe (Mutex-protected) H
 - Calling `py_free/1` removes the entry from the registry and decrements the Python object's reference count.
 - Once freed, a handle becomes invalid. Using a freed handle will result in an error.
 - Handle IDs are never reused within a process, including after `py_finalize/0` and `py_init/0`; handles from an earlier session remain invalid.
+- Repeated initialization, including direct `spy_init()` calls, preserves live handles and avoids duplicate `sys.path` entries. Finalization detaches the registry under its mutex and releases objects after unlocking, allowing `__del__` and weakref callbacks to query the registry. Ordinary Python methods also run outside that mutex.
 
 ### Error Handling and Sentinel Patterns
 At the Rust FFI level, three primary patterns are used:
@@ -459,6 +462,8 @@ At the Rust FFI level, three primary patterns are used:
 The Prolog layer now enforces strict error handling for all high-level conversion predicates: it clears stale thread-local errors before calls and throws `error(python_error(Msg), Context)` if any conversion/inspection call leaves an error.
 
 In practice, this means `py_to_int/2`, `py_to_float/2`, `py_to_str/2`, `py_to_repr/2`, `py_to_json/2`, `py_list_len/2`, `py_handle_count/1`, and `py_free/1` now throw on failure instead of exposing ambiguous sentinel values.
+
+Ordinary value outputs may be prebound: `py_to_int(H, 3)` succeeds on a matching value and fails normally on a different successful result. The bridge checks Python/FFI errors before unifying the result, so an invalid handle or conversion still throws even with a prebound output. Boolean matching and `py_is_none/1` retain their logical success/failure behavior. New handle outputs still require an unbound variable.
 
 Use `catch/3` to handle these errors gracefully:
 ```prolog
@@ -483,6 +488,8 @@ Caller context note: `with_py/2` and `with_py_temp/3` preserve caller-local goal
 
 ### Strings in Scryer Prolog
 Scryer Prolog represents double-quoted strings like `"hello"` as lists of characters (char lists). Atoms like `hello` are symbolic constants, not strings. This distinction is critical for the `:=` operator's dispatch mechanism. For multi-line Python, you can pass a continued string literal directly to `py_exec/1` using ISO Prolog backslash line continuation, as shown in `examples/basic.pl`. `py_exec_lines/1` is still available as a convenience wrapper, but it is functionally redundant because it only joins lines before calling `py_exec/1`.
+
+All high-level C-string inputs (code, module/attribute/method names, dictionary keys, string/JSON values, library paths, and home paths) must be fully instantiated proper character lists containing no NUL. Integers, atoms, malformed lists, and non-character elements raise type errors; variables and open lists raise instantiation errors. NUL raises `error(domain_error(nul_free_string, Input), Context)` before FFI. Empty and Unicode strings remain valid inputs (their Python meaning depends on the operation). `py_exec_lines/1` validates the whole list before executing any code. The raw C ABI remains unsafe and requires valid pointers.
 
 ### TLS String Buffer
 String-returning FFI functions, such as `py_to_str` or `py_to_json`, write their results into a thread-local storage (TLS) buffer on the Rust side. The Prolog layer immediately copies the contents of this buffer into a Prolog char list. This management is transparent to the user.
@@ -710,7 +717,7 @@ Calls a method on an object with 0 to 3 arguments. The last argument is always t
 #### py_calln(+Obj, +Method, +Args, -Result)
 Calls a method with N arguments. `Args` can be either a Prolog list of handles `[H1, H2, ...]` or a handle to an existing Python list or sequence.
 
-**Pitfall**: The method name must be a string. `py_call(Obj, "upper", R)` works, but `py_call(Obj, upper, R)` will fail because `upper` is an atom.
+**Pitfall**: The method name must be a character list. `py_call(Obj, "upper", R)` works, but `py_call(Obj, upper, R)` raises a type error because `upper` is an atom.
 
 **Example:**
 ```prolog
@@ -1387,8 +1394,8 @@ scoped_demo :-
 
 ```bash
 # Run basic example (robust — works on all systems)
-PYLIB=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
-LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/basic.pl
+PYLIB=$("${PYO3_PYTHON:-python3}" -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+LD_LIBRARY_PATH=".:$PYLIB:${LD_LIBRARY_PATH:-}" scryer-prolog examples/basic.pl
 
 # Or use run.sh (see Platform-Specific Notes > Linux > Convenience Wrapper)
 # ./run.sh examples/basic.pl
@@ -1396,9 +1403,36 @@ LD_LIBRARY_PATH=".:$PYLIB:$LD_LIBRARY_PATH" scryer-prolog examples/basic.pl
 
 ---
 
+## Core Regression Tests
+
+From the repository root, select the interpreter and build with the platform script. On Python 3.14+, direct Cargo commands also need compatibility mode with the current PyO3 release:
+
+```bash
+export PYO3_PYTHON="/path/to/python"
+source build_linux.sh  # macOS: source build_macos.sh
+cargo fmt --check
+PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo test
+PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo clippy
+PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo build --release
+
+(
+for suite in test/test_minimal_api.pl test/test_prolog_api.pl \
+    test/test_comprehensive.pl test/test_value_errors.pl \
+    test/test_string_inputs.pl test/test_smoke.pl test/test_pi.pl; do
+    scryer-prolog "$suite" || exit "$?"
+done
+)
+"$PYO3_PYTHON" test/test_registry_lifecycle.py -v
+"$PYO3_PYTHON" -m unittest discover -s test -p test_build_scripts.py -v
+```
+
+For supported Python versions, omit the compatibility prefix. Each suite asserts results and exits nonzero on failure; check the result before proceeding. The lifecycle suite uses a separate process and an eight-second timeout for each scenario, including destructor/weakref reentry. The build suite checks both scripts in isolated shells with mocked Cargo commands and also runs offline Cargo configuration tests using cached dependencies. Mock macOS and Python-version tests do not replace native platform/interpreter validation. The lifecycle test interpreter must match the bridge's Python runtime.
+
+---
+
 ## Benchmarks
 
-Build the release library for the active `python3` environment, then run:
+Build the release library for the selected Python environment, then run:
 
 ```bash
 SCRYNEURO_HOME="$(pwd)/target/release" bash benchmark/run_benchmarks.sh 10000
@@ -1422,8 +1456,8 @@ This is a Scryer Prolog quirk — `use_foreign_module/2` is a runtime goal, not 
 ### Linking error: `cannot find -lpython3.12`
 Python shared library not found. Check:
 ```bash
-python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))"
-ls $(python3 -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")/libpython3*
+"${PYO3_PYTHON:-python3}" -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))"
+ls "$("${PYO3_PYTHON:-python3}" -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")"/libpython3*
 ```
 If empty, your Python was built without `--enable-shared`. Use conda or rebuild Python.
 
