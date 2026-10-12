@@ -2,8 +2,8 @@
 
 # Keep caller options and PyO3 settings intact when this file is sourced.
 _scryneuro_build_linux() {
-    local python="${PYO3_PYTHON:-python3}" metadata version major minor libdir ldlibrary home
-    if ! metadata=$("$python" -c "import sys, sysconfig; print(sys.version.split()[0]); print(sysconfig.get_config_var('LIBDIR') or ''); print(sysconfig.get_config_var('LDLIBRARY') or '')"); then
+    local python="${PYO3_PYTHON:-python3}" metadata version major minor libdir ldlibrary framework framework_prefix library home
+    if ! metadata=$("$python" -c "import sys, sysconfig; print(sys.version.split()[0]); print(sysconfig.get_config_var('LIBDIR') or ''); print(sysconfig.get_config_var('LDLIBRARY') or ''); print(sysconfig.get_config_var('PYTHONFRAMEWORK') or ''); print(sysconfig.get_config_var('PYTHONFRAMEWORKPREFIX') or '')"); then
         echo "ERROR: Cannot query Python interpreter: $python" >&2
         return 1
     fi
@@ -11,6 +11,8 @@ _scryneuro_build_linux() {
         IFS= read -r version
         IFS= read -r libdir
         IFS= read -r ldlibrary
+        IFS= read -r framework || :
+        IFS= read -r framework_prefix || :
     } <<< "$metadata"
     if [ -z "$version" ] || [ -z "$libdir" ] || [ "$libdir" = None ] || [ -z "$ldlibrary" ] || [ "$ldlibrary" = None ]; then
         echo "ERROR: Python $python must report version, LIBDIR and LDLIBRARY" >&2
@@ -19,8 +21,16 @@ _scryneuro_build_linux() {
     case "$ldlibrary" in
         *.a) echo "ERROR: Python LDLIBRARY is static, a shared library is required: $libdir/$ldlibrary" >&2; return 1 ;;
     esac
-    if [ ! -f "$libdir/$ldlibrary" ]; then
-        echo "ERROR: Required Python shared library not found: $libdir/$ldlibrary (interpreter: $python)" >&2
+    library="$libdir/$ldlibrary"
+    if [ ! -f "$library" ] && [ -n "$framework" ] && [ "$framework" != None ]; then
+        if [ -z "$framework_prefix" ] || [ "$framework_prefix" = None ]; then
+            echo "ERROR: Python framework metadata requires PYTHONFRAMEWORKPREFIX" >&2
+            return 1
+        fi
+        library="$framework_prefix/$ldlibrary"
+    fi
+    if [ ! -f "$library" ]; then
+        echo "ERROR: Required Python shared library not found: $library (interpreter: $python)" >&2
         return 1
     fi
     major=${version%%.*}
@@ -34,7 +44,7 @@ _scryneuro_build_linux() {
     echo "Python version: $version"
     echo "Python LIBDIR: $libdir"
     echo "Python LDLIBRARY: $ldlibrary"
-    echo "Using Python shared library: $libdir/$ldlibrary"
+    echo "Using Python shared library: $library"
     (
         set -euo pipefail
         # PyO3 normally tries 'python' first: pin it to the interpreter probed above.

@@ -33,6 +33,8 @@ if name in ("python3", "chosen python"):
     print(os.environ["PROBE_VERSION"])
     print(os.environ["PROBE_LIBDIR"])
     print(os.environ["PROBE_LDLIBRARY"])
+    print(os.environ.get("PROBE_FRAMEWORK", ""))
+    print(os.environ.get("PROBE_FRAMEWORKPREFIX", ""))
 elif name == "python":
     print("ERROR: wrong default interpreter", file=sys.stderr)
     sys.exit(19)
@@ -205,6 +207,44 @@ class ShellBuildTests(unittest.TestCase):
                     self.assertFalse(any(tool["tool"] == "cargo" for tool in tools))
                 self.assertFalse(any(tool["tool"] == "install_name_tool" for tool in tools))
 
+    def test_framework_library_resolution_and_malformed_metadata(self):
+        prefix = self.base / "Library Frameworks"
+        ldlibrary = "Python.framework/Versions/3.13/Python"
+        library = prefix / ldlibrary
+        library.parent.mkdir(parents=True)
+        library.touch()
+        for platform, case in itertools.product(("linux", "macos"),
+                ("valid", "missing_prefix", "missing_library", "not_framework", "original_join")):
+            with self.subTest(platform=platform, case=case):
+                env = self.environment(platform, "3.13.5", "caller-value", explicit=True)
+                env.update(PROBE_FRAMEWORK="Python", PROBE_FRAMEWORKPREFIX=str(prefix),
+                    PROBE_LDLIBRARY=ldlibrary)
+                expected_library = library
+                if case == "missing_prefix":
+                    env["PROBE_FRAMEWORKPREFIX"] = ""
+                elif case == "missing_library":
+                    env["PROBE_FRAMEWORKPREFIX"] = str(self.base / "missing frameworks")
+                elif case == "not_framework":
+                    env["PROBE_FRAMEWORK"] = ""
+                elif case == "original_join":
+                    env["PROBE_LDLIBRARY"] = "libpython3.13." + ("so" if platform == "linux" else "dylib")
+                    env["PROBE_FRAMEWORKPREFIX"] = str(self.base / "missing frameworks")
+                    expected_library = self.libdir / env["PROBE_LDLIBRARY"]
+                success = case in ("valid", "original_join")
+                result, before, after, tools = self.run_source(platform, env, (True, True, True))
+                self.assertEqual(result.returncode, 0 if success else 1, result.stderr)
+                self.assert_preserved(platform, before, after, success)
+                if success:
+                    self.assertIn("Using Python shared library: " + str(expected_library), result.stdout)
+                    cargo = [tool for tool in tools if tool["tool"] == "cargo"]
+                    self.assertEqual(len(cargo), 1)
+                    self.assertEqual(cargo[0]["python"], env["PYO3_PYTHON"])
+                    self.assertEqual(cargo[0]["forward"], "caller-value")
+                else:
+                    self.assertFalse(any(tool["tool"] == "cargo" for tool in tools))
+                    self.assertIn("PYTHONFRAMEWORKPREFIX" if case == "missing_prefix"
+                        else "Required Python shared library not found", result.stderr)
+
     def test_plain_source_success_with_every_option_combination(self):
         for platform, options in itertools.product(("linux", "macos"), itertools.product((False, True), repeat=3)):
             with self.subTest(platform=platform, options=options):
@@ -332,10 +372,58 @@ class RustBuildConfigTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Python version differs from PyO3's actual build configuration", result.stderr)
 
+    def test_framework_metadata_with_real_pyo3_configuration(self):
+        base = self.project / "framework metadata"
+        libdir = base / "original libdir"
+        libdir.mkdir(parents=True)
+        prefix = base / "Library Frameworks"
+        ldlibrary = "Python.framework/Versions/3.13/Python"
+        library = prefix / ldlibrary
+        library.parent.mkdir(parents=True)
+        library.touch()
+        other_libdir = base / "different linker dir"
+        other_libdir.mkdir()
+        for case, error in (("valid", None),
+                ("missing_prefix", "Python framework metadata requires PYTHONFRAMEWORKPREFIX"),
+                ("missing_library", "Required Python shared library does not exist"),
+                ("not_framework", "Required Python shared library does not exist"),
+                ("version_mismatch", "Python version differs from PyO3's actual build configuration"),
+                ("libdir_mismatch", "Python LIBDIR differs from PyO3's actual linker directory")):
+            with self.subTest(case=case):
+                metadata = {"LIBDIR": str(libdir), "LDLIBRARY": ldlibrary,
+                    "PYTHONFRAMEWORK": "" if case == "not_framework" else "Python",
+                    "PYTHONFRAMEWORKPREFIX": "" if case == "missing_prefix" else
+                        str(base / "missing frameworks" if case == "missing_library" else prefix)}
+                fake_python = base / (case + " python")
+                # Execute build.rs's actual query with simulated sysconfig, rather
+                # than returning pre-canned lines independent of its Python code.
+                fake_python.write_text("#!" + REAL_PYTHON + "\nimport sys, sysconfig\n"
+                    'sys.version = "3.13.5 simulated framework"\nmetadata = ' + repr(metadata) + "\n"
+                    "sysconfig.get_config_var = metadata.get\nexec(sys.argv[2])\n", encoding="utf-8")
+                fake_python.chmod(0o755)
+                config = base / (case + " config.txt")
+                config.write_text("implementation=CPython\nversion="
+                    + ("3.12" if case == "version_mismatch" else "3.13")
+                    + "\nshared=true\nabi3=false\nlib_name=python3.13\nlib_dir="
+                    + str(other_libdir if case == "libdir_mismatch" else libdir)
+                    + "\nexecutable=" + str(fake_python) + "\npython_framework_prefix=" + str(prefix) + "\n",
+                    encoding="utf-8")
+                env = self.env.copy()
+                env["PYO3_CONFIG_FILE"] = str(config)
+                result = self.run_cargo(env)
+                self.assertEqual(result.returncode == 0, error is None, result.stderr)
+                if error:
+                    self.assertIn(error, result.stderr)
+                else:
+                    self.assertIn("LIBRARY=" + str(library), result.stdout)
+                    self.assertIn("LDLIBRARY=" + ldlibrary, result.stdout)
+                    self.assertIn("LIBDIR=" + str(libdir), result.stderr)
+                    self.assertIn("interpreter=" + str(fake_python), result.stderr)
+
     def test_real_config_file_missing_library_is_rejected(self):
         fake_python = self.project / "configured python"
         fake_python.write_text("#!" + REAL_PYTHON + "\n"
-            'print("3.13.5")\nprint(' + repr(str(self.project)) + ')\nprint("libpython missing.so")\n', encoding="utf-8")
+            'print("3.13.5")\nprint(' + repr(str(self.project)) + ')\nprint("libpython missing.so")\nprint("")\nprint("")\n', encoding="utf-8")
         fake_python.chmod(0o755)
         config = self.project / "pyo3 config.txt"
         config.write_text("implementation=CPython\nversion=3.13\nshared=true\nabi3=false\n"
