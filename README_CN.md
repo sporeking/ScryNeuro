@@ -520,6 +520,16 @@ catch(
 ).
 ```
 
+Python 错误消息仍以字符列表（`chars`）保存在 `error(python_error(Msg), Context)` 中。只显示消息文本时，使用 `format("~s~n", [Msg])`，以保留 traceback 的真实换行、中文、引号和反斜杠。在最终错误输出位置，使用 `print_py_error(Error)` 显示可读的 Python/FFI 提示。它继续写入 `current_output`；空 Python 消息仍保留标题，也兼容原有的 atom 消息。
+
+需要查看完整异常项，同时避免字符列表展开时，使用：
+```prolog
+write_term(Error, [quoted(true), double_quotes(true)]), nl.
+```
+这样保留项结构，将完整字符列表显示为双引号字符串；数字列表和混合列表仍按列表显示。通用异常或非文本的 Python 载荷也由 formatter 按这种方式展示，不会实例化输入变量。
+
+`print_py_error/1` 只负责打印，不会自动接管任意 `writeq/1`、`~q` 或默认顶层；调用方需要在输出边界显式使用它。捕获后的恢复、失败、重新抛出或退出策略仍由调用方决定。例如，遇到异常必须退出的入口可以使用 `catch(Goal, Error, (print_py_error(Error), halt(1)))`。
+
 ### 内存管理
 每一个句柄都代表着 Rust/Python 层的一段真实资源。当句柄不再被需要时，你**必须手动释放它们**以防止内存泄漏。
 - `py_free/1`：手动清理某个特定的句柄。
@@ -985,6 +995,7 @@ for suite in test/test_minimal_api.pl test/test_prolog_api.pl \
     scryer-prolog "$suite" || exit "$?"
 done
 )
+"$PYO3_PYTHON" test/test_error_output.py -v
 "$PYO3_PYTHON" test/test_registry_lifecycle.py -v
 "$PYO3_PYTHON" -m unittest discover -s test -p test_build_scripts.py -v
 ```

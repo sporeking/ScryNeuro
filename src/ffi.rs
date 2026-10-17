@@ -15,7 +15,8 @@
 //!
 //! **Memory:**
 //! - Returned `cstr` pointers use a TLS buffer — valid until the next `spy_*` call.
-//!   Scryer copies the string into a Prolog atom before the predicate succeeds.
+//!   Scryer copies it into a Prolog string term (exposed as chars) before
+//!   the predicate succeeds.
 //! - Handles (`isize`) are opaque references to Python objects in the registry.
 //!   They MUST be freed with `spy_drop` when no longer needed.
 

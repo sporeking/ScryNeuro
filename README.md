@@ -474,6 +474,16 @@ catch(
 ).
 ```
 
+Python error messages remain character lists (`chars`) in `error(python_error(Msg), Context)`. To display just the message, use `format("~s~n", [Msg])`: this preserves actual traceback newlines, Unicode, quotes, and backslashes. At a final error output boundary, use `print_py_error(Error)` for readable Python/FFI diagnostics. It writes to `current_output`, including a heading for an empty Python message, and accepts legacy atom messages too.
+
+To inspect a complete exception term while keeping character lists compact, use:
+```prolog
+write_term(Error, [quoted(true), double_quotes(true)]), nl.
+```
+This preserves term structure and displays complete character lists as double-quoted strings; numeric and mixed lists remain lists. The formatter uses this form for general exceptions or non-text Python payloads, without instantiating input variables.
+
+`print_py_error/1` only prints. It does not intercept arbitrary `writeq/1`, `~q`, or the default top level; callers must use it at their output boundary. Recovery, failure, propagation, and exit policy remain the caller's responsibility. For example, an entry point that must exit on an exception can use `catch(Goal, Error, (print_py_error(Error), halt(1)))`.
+
 ### Memory Management
 Every handle represents a resource in the Rust/Python layers. You must free handles when they are no longer needed to prevent memory leaks.
 - `py_free/1`: Manual cleanup of a specific handle.
@@ -1422,6 +1432,7 @@ for suite in test/test_minimal_api.pl test/test_prolog_api.pl \
     scryer-prolog "$suite" || exit "$?"
 done
 )
+"$PYO3_PYTHON" test/test_error_output.py -v
 "$PYO3_PYTHON" test/test_registry_lifecycle.py -v
 "$PYO3_PYTHON" -m unittest discover -s test -p test_build_scripts.py -v
 ```

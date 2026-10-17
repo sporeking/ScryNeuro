@@ -101,7 +101,7 @@ run_suite(N) :-
 
 main :-
     ( catch((iteration_count(N), run_suite(N)), Error,
-            ( format("FFI benchmark failed: ~q~n", [Error]), halt(1) )) ->
+            ( format("FFI benchmark failed: ", []), print_py_error(Error), halt(1) )) ->
         halt(0)
     ; format("FFI benchmark failed without an exception.~n", []), halt(1)
     ).

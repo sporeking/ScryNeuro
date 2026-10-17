@@ -2,7 +2,9 @@
 :- use_module('../prolog/scryer_py').
 :- use_module(library(format)).
 
-run :- bench(3).
+run :-
+    catch(bench(3), Error,
+          (format("MNIST CNN benchmark failed: ", []), print_py_error(Error), halt(1))).
 
 get_time_ms(Ms) :-
     py_eval("__import__('time').perf_counter() * 1000", H),

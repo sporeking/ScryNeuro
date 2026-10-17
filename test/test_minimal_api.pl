@@ -42,7 +42,7 @@ run_tests :-
             write("=== ALL 3 TESTS PASSED ==="), nl
         ), py_finalize),
         Error,
-        ( write('Minimal API tests failed: '), writeq(Error), nl, halt(1) )
+        ( write('Minimal API tests failed: '), print_py_error(Error), halt(1) )
       ) -> halt(0)
     ; write('Minimal API tests failed without an exception.'), nl, halt(1)
     ).

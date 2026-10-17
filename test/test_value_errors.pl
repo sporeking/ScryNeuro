@@ -58,7 +58,7 @@ values :-
 
 run :-
     ( catch(setup_call_cleanup(py_init, values, py_finalize), E,
-            (format("Value regressions failed: ~q~n", [E]), halt(1))) ->
+            (format("Value regressions failed: ", []), print_py_error(E), halt(1))) ->
         format("Value regressions passed.~n", []), halt(0)
     ; halt(1) ).
 :- initialization(run).

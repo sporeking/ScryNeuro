@@ -59,7 +59,8 @@ test_pi :-
 
 run_tests :-
     ( catch((init, test), Error,
-            ( write('Pi test failed: '), writeq(Error), nl, halt(1) )) ->
+            ( write('Pi test failed: '),
+              write_term(Error, [quoted(true), double_quotes(true)]), nl, halt(1) )) ->
         halt(0)
     ; write('Pi test failed without an exception.'), nl, halt(1)
     ).

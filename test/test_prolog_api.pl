@@ -571,7 +571,7 @@ run_tests :-
           test_atom_library_path,
           setup_call_cleanup(py_init, all_tests, py_finalize) ),
         Error,
-        ( format("Prolog API tests failed: ~q~n", [Error]), halt(1) )
+        ( format("Prolog API tests failed: ", []), print_py_error(Error), halt(1) )
       ) -> halt(0)
     ; format("Prolog API tests failed without an exception.~n", []), halt(1)
     ).

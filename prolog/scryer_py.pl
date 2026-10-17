@@ -640,17 +640,38 @@ py_last_error(Error) :-
     ; Error = Raw
     ).
 
-%% print_py_error(+Error): Pretty-print ScryNeuro Python/FFI errors.
-%% Handles error(python_error(Msg), Context) and prints Msg as text when possible.
-print_py_error(error(foreign_library_load_error(Path), _)) :- !,
-    format("Foreign library could not be loaded: ~s~n", [Path]).
-print_py_error(error(python_error(Msg), Context)) :- !,
-    format("Python error (~w):~n", [Context]),
-    ( Msg = [_|_] -> format("~s~n", [Msg])
-    ; format("~w~n", [Msg])
-    ).
+%% print_py_error(+Error): Print to current_output; the caller decides recovery/exit.
+%% Complete character lists (including []) and legacy atom messages print as text.
 print_py_error(Error) :-
-    format("Error: ~q~n", [Error]).
+    nonvar(Error), Error = error(Kind, _), nonvar(Kind),
+    Kind = foreign_library_load_error(Path), error_text(Path), !,
+    format("Foreign library could not be loaded: ", []),
+    print_error_text(Path), nl.
+print_py_error(Error) :-
+    nonvar(Error), Error = error(Kind, Context), nonvar(Kind),
+    Kind = python_error(Msg), error_text(Msg), !,
+    format("Python error (", []),
+    write_term(Context, [quoted(true), double_quotes(true)]),
+    format("):~n", []),
+    print_error_text(Msg), nl.
+print_py_error(Error) :-
+    format("Error: ", []),
+    write_term(Error, [quoted(true), double_quotes(true)]),
+    nl.
+
+% [] is also an atom; keep it on the character-list output path.
+print_error_text(Text) :-
+    ( atom(Text), Text \== [] -> write(Text) ; format("~s", [Text]) ).
+
+% Recognize text without binding variables or passing malformed lists to ~s.
+error_text(Text) :- atom(Text), !.
+error_text(Text) :- error_chars(Text).
+
+error_chars(Chars) :-
+    nonvar(Chars),
+    ( Chars = [] -> true
+    ; Chars = [Char|Rest], atom(Char), atom_length(Char, 1), error_chars(Rest)
+    ).
 
 %% ---------------------------------------------------------------------------
 %% Resource Management (RAII-style)

@@ -90,7 +90,7 @@ valid_inputs_with_arg(V16) :-
 
 run :-
     ( catch(setup_call_cleanup(py_init, strings, py_finalize), E,
-            (format("String regressions failed: ~q~n", [E]), halt(1))) ->
+            (format("String regressions failed: ", []), print_py_error(E), halt(1))) ->
         format("String regressions passed.~n", []), halt(0)
     ; halt(1) ).
 :- initialization(run).

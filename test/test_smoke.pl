@@ -2,6 +2,7 @@
 %% use_foreign_module/2 is a runtime goal, not a directive.
 :- use_module(library(ffi)).
 :- use_module('../prolog/scryer_py').
+:- use_module(library(format)).
 
 %% Detect library path: try .dylib (macOS) by checking file existence,
 %% fall back to .so (Linux).
@@ -60,7 +61,7 @@ test :-
         ( S = "hello world" -> true
         ; throw(error(test_failed(spy_to_str), test_smoke/0))
         ),
-        write('String: '), write(S), nl,
+        write('String: '), format("~s~n", [S]),
         ffi:'spy_drop'(H2)
     ; ffi:'spy_last_error'(Err3),
       throw(error(python_error(Err3), spy_eval/2))
@@ -79,7 +80,7 @@ test :-
 
 run_tests :-
     ( catch((init, test), Error,
-            ( write('Smoke tests failed: '), writeq(Error), nl, halt(1) )) ->
+            ( write('Smoke tests failed: '), print_py_error(Error), halt(1) )) ->
         halt(0)
     ; write('Smoke tests failed without an exception.'), nl, halt(1)
     ).

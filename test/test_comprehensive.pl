@@ -1,6 +1,7 @@
 %%  Comprehensive test for all ScryNeuro FFI functions
 :- use_module(library(ffi)).
 :- use_module(library(iso_ext)).
+:- use_module(library(format)).
 
 expect(Label, Goal) :-
     ( call(Goal) -> true
@@ -286,7 +287,7 @@ test_body :-
     ffi:'spy_eval'("1/0", HErr),
     write('h='), write(HErr), write(' '),
     ffi:'spy_last_error'(EMsg),
-    write(EMsg), nl,
+    format("~s~n", [EMsg]),
     expect('25. error', (HErr =:= 0, EMsg \= [])),
     ffi:'spy_last_error_clear',
 
@@ -298,7 +299,8 @@ test_body :-
 
 run_tests :-
     ( catch((init, test), Error,
-            ( write('Comprehensive tests failed: '), writeq(Error), nl, halt(1) )) ->
+            ( write('Comprehensive tests failed: '),
+              write_term(Error, [quoted(true), double_quotes(true)]), nl, halt(1) )) ->
         halt(0)
     ; write('Comprehensive tests failed without an exception.'), nl, halt(1)
     ).

@@ -1,8 +1,9 @@
 //! Type conversion helpers and TLS string buffer for FFI returns.
 //!
 //! String-returning FFI functions use a thread-local buffer to avoid
-//! memory leaks. Scryer copies the `cstr` return value into a Prolog atom
-//! before the predicate succeeds, so the buffer can be safely reused.
+//! memory leaks. Scryer copies the `cstr` return value into a Prolog string
+//! term (exposed as chars) before the predicate succeeds, so the buffer can
+//! be safely reused.
 
 use std::cell::RefCell;
 use std::ffi::{CStr, CString};
