@@ -136,6 +136,10 @@ source build_macos.sh
 PYO3_PYTHON="${PYO3_PYTHON:-python3}" PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo build --release
 ```
 
+> **macOS 说明：**
+> - Conda 的 Python 报告的 `LDLIBRARY` 是静态库（`libpython3.X.a`），但在同一目录下提供了 `libpython3.X.dylib`；构建会自动使用该动态库。
+> - `build_macos.sh` 构建的 release dylib 不做 strip（`CARGO_PROFILE_RELEASE_STRIP=false`），因为较新的 Xcode 工具链生成的 strip 后 dylib 会因 `mis-aligned LINKEDIT string pool` 而无法加载。如需恢复 Cargo 默认的 strip，请运行 `CARGO_PROFILE_RELEASE_STRIP=debuginfo source build_macos.sh`。如果在 macOS 上直接调用 `cargo build --release`，请自行设置 `CARGO_PROFILE_RELEASE_STRIP=false`。
+
 > **为什么要用 `source`？** 使用 `source`（或 `. ./build_linux.sh`）执行脚本，导出的环境变量才会保留在**当前 Shell** 中。直接执行 `./build_linux.sh` 只会在一个立即退出的子 Shell 中设置它们，对当前终端没有效果。
 
 也可以手动执行以下步骤：
