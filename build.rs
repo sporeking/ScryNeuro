@@ -37,7 +37,18 @@ fn main() {
                 .all(|field| !field.is_empty() && *field != "None"),
         "Python {python:?} did not report version, LIBDIR and LDLIBRARY"
     );
-    let (version, libdir, ldlibrary) = (fields[0], fields[1], fields[2]);
+    let (version, libdir) = (fields[0], fields[1]);
+    let mut ldlibrary = fields[2].to_owned();
+    // Conda reports a static LDLIBRARY but ships the shared library beside it.
+    if let Some(stem) = ldlibrary.strip_suffix(".a") {
+        let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+        let shared_ext = if target_os == "macos" { "dylib" } else { "so" };
+        let shared = format!("{stem}.{shared_ext}");
+        if Path::new(libdir).join(&shared).is_file() {
+            ldlibrary = shared;
+        }
+    }
+    let ldlibrary = ldlibrary.as_str();
     assert_eq!(
         version.split('.').take(2).collect::<Vec<_>>().join("."),
         config.version.to_string(),
