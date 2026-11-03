@@ -368,10 +368,18 @@ class RustBuildConfigTests(unittest.TestCase):
         return subprocess.run([self.cargo, "run", "--offline"], cwd=self.project,
             env=env, capture_output=True, text=True, timeout=120)
 
+    def expected_real_ldlibrary(self):
+        library = sysconfig.get_config_var("LDLIBRARY")
+        # Conda's static metadata must resolve to the matching shared library.
+        if library.endswith(".a"):
+            suffix = ".dylib" if sys.platform == "darwin" else ".so"
+            library = str(Path(library).with_suffix(suffix))
+        return library
+
     def test_explicit_real_interpreter_matches_real_sysconfig(self):
         result = self.run_cargo(self.env)
         self.assertEqual(result.returncode, 0, result.stderr)
-        libdir, library = sysconfig.get_config_var("LIBDIR"), sysconfig.get_config_var("LDLIBRARY")
+        libdir, library = sysconfig.get_config_var("LIBDIR"), self.expected_real_ldlibrary()
         self.assertIn("LIBRARY=" + str(Path(libdir) / library), result.stdout)
         self.assertIn("LDLIBRARY=" + library, result.stdout)
         self.assertIn("interpreter=" + REAL_PYTHON, result.stderr)
@@ -393,7 +401,7 @@ class RustBuildConfigTests(unittest.TestCase):
         result = self.run_cargo(env)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("wrong-default-python3", result.stderr)
-        self.assertIn("LDLIBRARY=" + sysconfig.get_config_var("LDLIBRARY"), result.stdout)
+        self.assertIn("LDLIBRARY=" + self.expected_real_ldlibrary(), result.stdout)
         self.assertIn("interpreter=" + str(bin_dir / "python"), result.stderr)
 
     def test_invalid_explicit_interpreter_fails(self):
@@ -405,8 +413,9 @@ class RustBuildConfigTests(unittest.TestCase):
 
     def test_real_config_file_version_mismatch_is_rejected(self):
         config = self.project / "wrong version config.txt"
-        config.write_text("implementation=CPython\nversion=3.12\nshared=true\nabi3=false\n"
-            "lib_name=python3.12\nlib_dir=" + str(sysconfig.get_config_var("LIBDIR"))
+        wrong_version = "3.13" if sys.version_info[:2] == (3, 12) else "3.12"
+        config.write_text("implementation=CPython\nversion=" + wrong_version + "\nshared=true\nabi3=false\n"
+            "lib_name=python" + wrong_version + "\nlib_dir=" + str(sysconfig.get_config_var("LIBDIR"))
             + "\nexecutable=" + REAL_PYTHON + "\n", encoding="utf-8")
         env = self.env.copy()
         env["PYO3_CONFIG_FILE"] = str(config)
