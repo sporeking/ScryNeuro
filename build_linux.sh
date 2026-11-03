@@ -19,7 +19,15 @@ _scryneuro_build_linux() {
         return 1
     fi
     case "$ldlibrary" in
-        *.a) echo "ERROR: Python LDLIBRARY is static, a shared library is required: $libdir/$ldlibrary" >&2; return 1 ;;
+        *.a)
+            # Conda reports a static LDLIBRARY but ships the shared library beside it.
+            if [ -f "$libdir/${ldlibrary%.a}.so" ]; then
+                ldlibrary="${ldlibrary%.a}.so"
+            else
+                echo "ERROR: Python LDLIBRARY is static, a shared library is required: $libdir/$ldlibrary" >&2
+                return 1
+            fi
+            ;;
     esac
     library="$libdir/$ldlibrary"
     if [ ! -f "$library" ] && [ -n "$framework" ] && [ "$framework" != None ]; then

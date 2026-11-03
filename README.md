@@ -138,8 +138,9 @@ If your shell/environment still invokes `cargo build --release` directly with Py
 PYO3_PYTHON="${PYO3_PYTHON:-python3}" PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo build --release
 ```
 
+> **Conda note (Linux and macOS):** Some Conda Pythons report a static `LDLIBRARY` (`libpython3.X.a`) but also provide a matching shared library in `LIBDIR`. The build scripts automatically use that `.so` on Linux or `.dylib` on macOS; a static-only installation is still rejected.
+
 > **macOS notes:**
-> - Conda Pythons report a static `LDLIBRARY` (`libpython3.X.a`) but ship `libpython3.X.dylib` next to it; the build uses that shared library automatically.
 > - `build_macos.sh` builds the release dylib unstripped (`CARGO_PROFILE_RELEASE_STRIP=false`), because recent Xcode toolchains produce a stripped dylib that fails to load with `mis-aligned LINKEDIT string pool`. To restore Cargo's default stripping, run `CARGO_PROFILE_RELEASE_STRIP=debuginfo source build_macos.sh`. If you call `cargo build --release` directly on macOS, pass `CARGO_PROFILE_RELEASE_STRIP=false` yourself.
 
 > **Why `source`?** Running with `source` (or `. ./build_linux.sh`) makes the exported variables persist in your **current shell**. Running as `./build_linux.sh` sets them only in a subshell that immediately exits.

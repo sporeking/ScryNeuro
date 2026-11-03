@@ -24,6 +24,7 @@ MOCK_TOOL = r'''import json, os, pathlib, shutil, sys
 name = pathlib.Path(sys.argv[0]).name
 with open(os.environ["TOOL_LOG"], "a", encoding="utf-8") as log:
     log.write(json.dumps({"tool": name, "args": sys.argv[1:],
+        "strip": os.environ.get("CARGO_PROFILE_RELEASE_STRIP"),
         "python": os.environ.get("PYO3_PYTHON"),
         "forward": os.environ.get("PYO3_USE_ABI3_FORWARD_COMPATIBILITY")}) + "\n")
 if name in ("python3", "chosen python"):
@@ -83,7 +84,7 @@ class ShellBuildTests(unittest.TestCase):
 
     def environment(self, platform, version="3.14.7", forward=None, explicit=False):
         env = os.environ.copy()
-        for key in ("PYO3_PYTHON", "PYO3_USE_ABI3_FORWARD_COMPATIBILITY", "PYLIB", "SCRYNEURO_HOME"):
+        for key in ("PYO3_PYTHON", "PYO3_USE_ABI3_FORWARD_COMPATIBILITY", "PYLIB", "SCRYNEURO_HOME", "CARGO_PROFILE_RELEASE_STRIP"):
             env.pop(key, None)
         suffix = "so" if platform == "linux" else "dylib"
         env.update(PATH=str(self.bin) + os.pathsep + env.get("PATH", ""),
@@ -193,7 +194,10 @@ class ShellBuildTests(unittest.TestCase):
                 elif case == "missing_library":
                     env["PROBE_LDLIBRARY"] = "missing shared library"
                 elif case == "static_library":
-                    env["PROBE_LDLIBRARY"] = "libpython3.14.a"
+                    # Use a version with no shared fixture; do not remove the
+                    # libraries needed by the following copy_failure subtest.
+                    env["PROBE_VERSION"] = "3.12.5"
+                    env["PROBE_LDLIBRARY"] = "libpython3.12.a"
                     (self.libdir / env["PROBE_LDLIBRARY"]).touch()
                 else:
                     env["CP_STATUS"] = "29"
@@ -205,7 +209,45 @@ class ShellBuildTests(unittest.TestCase):
                 if case != "copy_failure":
                     self.assertIn("ERROR:", result.stderr)
                     self.assertFalse(any(tool["tool"] == "cargo" for tool in tools))
+                else:
+                    self.assertEqual(sum(tool["tool"] == "cargo" for tool in tools), 1)
+                    self.assertEqual(sum(tool["tool"] == "cp" for tool in tools), 1)
                 self.assertFalse(any(tool["tool"] == "install_name_tool" for tool in tools))
+
+    def test_static_metadata_selects_existing_shared_library(self):
+        for platform, static_exists in itertools.product(("linux", "macos"), (False, True)):
+            with self.subTest(platform=platform, static_exists=static_exists):
+                env = self.environment(platform, explicit=True)
+                env["PROBE_LDLIBRARY"] = "libpython3.14.a"
+                static = self.libdir / env["PROBE_LDLIBRARY"]
+                if static_exists:
+                    static.touch()
+                else:
+                    static.unlink(missing_ok=True)
+                result, before, after, tools = self.run_source(platform, env, (True, True, True))
+                self.assertEqual(result.returncode, 0, result.stderr)
+                suffix = "so" if platform == "linux" else "dylib"
+                shared = self.libdir / ("libpython3.14." + suffix)
+                self.assertIn("Using Python shared library: " + str(shared), result.stdout)
+                self.assertEqual(sum(tool["tool"] == "cargo" for tool in tools), 1)
+                self.assert_preserved(platform, before, after, True)
+
+    def test_release_strip_default_override_and_caller_preservation(self):
+        for platform, strip, fail in itertools.product(
+                ("linux", "macos"), (None, "", "false", "debuginfo", "symbols"), (False, True)):
+            with self.subTest(platform=platform, strip=strip, failure=fail):
+                env = self.environment(platform)
+                if strip is not None:
+                    env["CARGO_PROFILE_RELEASE_STRIP"] = strip
+                if fail:
+                    env["CARGO_STATUS"] = "23"
+                result, before, after, tools = self.run_source(platform, env, (True, True, True))
+                self.assertEqual(result.returncode, 1 if fail else 0, result.stderr)
+                cargo = [tool for tool in tools if tool["tool"] == "cargo"]
+                self.assertEqual(len(cargo), 1)
+                expected = (strip or "false") if platform == "macos" else strip
+                self.assertEqual(cargo[0]["strip"], expected)
+                self.assert_preserved(platform, before, after, not fail)
 
     def test_framework_library_resolution_and_malformed_metadata(self):
         prefix = self.base / "Library Frameworks"
@@ -419,6 +461,34 @@ class RustBuildConfigTests(unittest.TestCase):
                     self.assertIn("LDLIBRARY=" + ldlibrary, result.stdout)
                     self.assertIn("LIBDIR=" + str(libdir), result.stderr)
                     self.assertIn("interpreter=" + str(fake_python), result.stderr)
+
+    @unittest.skipUnless(sys.platform in ("linux", "darwin"), "Unix shared library layout")
+    def test_static_metadata_selects_shared_library_in_real_build_script(self):
+        suffix = "dylib" if sys.platform == "darwin" else "so"
+        for static_exists in (False, True):
+            with self.subTest(static_exists=static_exists):
+                base = self.project / ("conda libraries " + str(static_exists))
+                base.mkdir()
+                shared = base / ("libpython3.13." + suffix)
+                shared.touch()
+                if static_exists:
+                    (base / "libpython3.13.a").touch()
+                metadata = {"LIBDIR": str(base), "LDLIBRARY": "libpython3.13.a"}
+                fake_python = base / "configured python"
+                fake_python.write_text("#!" + REAL_PYTHON + "\nimport sys, sysconfig\n"
+                    'sys.version = "3.13.5 simulated conda"\nmetadata = ' + repr(metadata) + "\n"
+                    "sysconfig.get_config_var = metadata.get\nexec(sys.argv[2])\n", encoding="utf-8")
+                fake_python.chmod(0o755)
+                config = base / "config.txt"
+                config.write_text("implementation=CPython\nversion=3.13\nshared=true\nabi3=false\n"
+                    "lib_name=python3.13\nlib_dir=" + str(base) + "\nexecutable=" + str(fake_python) + "\n",
+                    encoding="utf-8")
+                env = self.env.copy()
+                env["PYO3_CONFIG_FILE"] = str(config)
+                result = self.run_cargo(env)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("LIBRARY=" + str(shared), result.stdout)
+                self.assertIn("LDLIBRARY=" + shared.name, result.stdout)
 
     def test_real_config_file_missing_library_is_rejected(self):
         fake_python = self.project / "configured python"
