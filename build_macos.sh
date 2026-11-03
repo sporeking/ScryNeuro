@@ -19,7 +19,15 @@ _scryneuro_build_macos() {
         return 1
     fi
     case "$ldlibrary" in
-        *.a) echo "ERROR: Python LDLIBRARY is static, a shared library is required: $libdir/$ldlibrary" >&2; return 1 ;;
+        *.a)
+            # Conda reports a static LDLIBRARY but ships the shared library beside it.
+            if [ -f "$libdir/${ldlibrary%.a}.dylib" ]; then
+                ldlibrary="${ldlibrary%.a}.dylib"
+            else
+                echo "ERROR: Python LDLIBRARY is static, a shared library is required: $libdir/$ldlibrary" >&2
+                return 1
+            fi
+            ;;
     esac
     library="$libdir/$ldlibrary"
     if [ ! -f "$library" ] && [ -n "$framework" ] && [ "$framework" != None ]; then
@@ -55,6 +63,11 @@ _scryneuro_build_macos() {
             export PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
             echo "Detected Python $version; enabling PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 for this build"
         fi
+        # Cargo's default release stripping (Rust >= 1.77) produces a dylib that dyld
+        # rejects ("mis-aligned LINKEDIT string pool") with recent Xcode toolchains.
+        # Unstripped output loads everywhere; set CARGO_PROFILE_RELEASE_STRIP to override.
+        export CARGO_PROFILE_RELEASE_STRIP="${CARGO_PROFILE_RELEASE_STRIP:-false}"
+        echo "Release strip setting: CARGO_PROFILE_RELEASE_STRIP=$CARGO_PROFILE_RELEASE_STRIP"
         echo "Building ScryNeuro (release)..."
         # Explicit checks also work if the caller sources us inside an if/|| list,
         # where Bash suppresses errexit even in a function's subshell.
